@@ -1,0 +1,42 @@
+apiVersion: rbac.open-cluster-management.io/v1alpha1
+kind: ClusterPermission
+metadata:
+  name: clusterpermission-sample
+spec:
+  clusterRole:
+    rules:
+    - apiGroups: ["apps"]
+      resources: ["services"]
+      verbs: ["create"]
+  clusterRoleBinding:
+    subject:
+      kind: ServiceAccount
+      name: klusterlet-work-sa
+      namespace: open-cluster-management-agent
+  roles:
+  - namespace: default
+    rules:
+    - apiGroups: ["apps"]
+      resources: ["services"]
+      verbs: ["create"]
+  - namespace: kube-public
+    rules:
+    - apiGroups: [""]
+      resources: ["namespaces"]
+      verbs: ["create"]
+  roleBindings:
+  - namespace: kube-system
+    roleRef:
+      kind: ClusterRole
+    subject:
+      apiGroup: rbac.authorization.k8s.io
+      kind: Group
+      name: system:serviceaccounts
+  - namespace: default
+    roleRef:
+      kind: Role
+    subject:
+      apiGroup: rbac.authorization.k8s.io
+      kind: User
+      name: "alice@example.com"
+
