@@ -1,0 +1,20 @@
+apiVersion: rbac.open-cluster-management.io/v1alpha1
+kind: ClusterPermission
+metadata:
+  name: clusterpermission-msa-subject-sample
+  namespace: cluster1
+spec:
+  roles:
+  - namespace: default
+    rules:
+    - apiGroups: ["apps"]
+      resources: ["deployments"]
+      verbs: ["update"]
+  roleBindings:
+  - namespace: default
+    roleRef:
+      kind: Role
+    subject:
+      apiGroup: authentication.open-cluster-management.io
+      kind: ManagedServiceAccount
+      name: managed-sa-sample
