@@ -164,11 +164,3 @@ deploy-ocm:
 .PHONY: test-e2e
 test-e2e: deploy-ocm
 	e2e/run_e2e.sh
-
-.PHONY: deploy-ocm
-deploy-ocm:
-	deploy/ocm/install.sh
-
-.PHONY: test-e2e
-test-e2e: deploy-ocm
-	e2e/run_e2e.sh
