@@ -4,12 +4,13 @@ IMG ?= quay.io/open-cluster-management/cluster-permission:latest
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
 ENVTEST_K8S_VERSION = 1.26.0
 
-# Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
-ifeq (,$(shell go env GOBIN))
-GOBIN=$(shell go env GOPATH)/bin
-else
-GOBIN=$(shell go env GOBIN)
-endif
+TEST_TMP :=/tmp
+export KUBEBUILDER_ASSETS ?=$(TEST_TMP)/kubebuilder/bin
+K8S_VERSION ?=1.19.2
+GOHOSTOS ?=$(shell go env GOHOSTOS)
+GOHOSTARCH ?= $(shell go env GOHOSTARCH)
+KB_TOOLS_ARCHIVE_NAME :=kubebuilder-tools-$(K8S_VERSION)-$(GOHOSTOS)-$(GOHOSTARCH).tar.gz
+KB_TOOLS_ARCHIVE_PATH := $(TEST_TMP)/$(KB_TOOLS_ARCHIVE_NAME)
 
 # Setting SHELL to bash allows bash commands to be executed by recipes.
 # Options are set to exit when a recipe line exits non-zero or a piped command fails.
@@ -54,14 +55,13 @@ fmt: ## Run go fmt against code.
 vet: ## Run go vet against code.
 	go vet ./...
 
-.PHONY: test
-test: manifests generate fmt vet envtest ## Run tests.
-	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test ./... -coverprofile cover.out
-
 ##@ Build
 
+.PHONY: pre-build
+pre-build: manifests generate fmt vet
+
 .PHONY: build
-build: manifests generate fmt vet ## Build manager binary.
+build:
 	go build -o bin/cluster-permission main.go
 
 .PHONY: run
@@ -152,10 +152,22 @@ $(CONTROLLER_GEN): $(LOCALBIN)
 	test -s $(LOCALBIN)/controller-gen && $(LOCALBIN)/controller-gen --version | grep -q $(CONTROLLER_TOOLS_VERSION) || \
 	GOBIN=$(LOCALBIN) go install sigs.k8s.io/controller-tools/cmd/controller-gen@$(CONTROLLER_TOOLS_VERSION)
 
-.PHONY: envtest
-envtest: $(ENVTEST) ## Download envtest-setup locally if necessary.
-$(ENVTEST): $(LOCALBIN)
-	test -s $(LOCALBIN)/setup-envtest || GOBIN=$(LOCALBIN) go install sigs.k8s.io/controller-runtime/tools/setup-envtest@latest
+.PHONY: test
+
+# download the kubebuilder-tools to get kube-apiserver binaries from it
+ensure-kubebuilder-tools:
+ifeq "" "$(wildcard $(KUBEBUILDER_ASSETS))"
+	$(info Downloading kube-apiserver into '$(KUBEBUILDER_ASSETS)')
+	mkdir -p '$(KUBEBUILDER_ASSETS)'
+	curl -s -f -L https://storage.googleapis.com/kubebuilder-tools/$(KB_TOOLS_ARCHIVE_NAME) -o '$(KB_TOOLS_ARCHIVE_PATH)'
+	tar -C '$(KUBEBUILDER_ASSETS)' --strip-components=2 -zvxf '$(KB_TOOLS_ARCHIVE_PATH)'
+else
+	$(info Using existing kube-apiserver from "$(KUBEBUILDER_ASSETS)")
+endif
+.PHONY: ensure-kubebuilder-tools
+
+test: ensure-kubebuilder-tools
+	go test -timeout 300s -v ./controllers/... -coverprofile=coverage.out
 
 .PHONY: deploy-ocm
 deploy-ocm:
