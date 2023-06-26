@@ -29,6 +29,8 @@ jobs:
         uses: actions/setup-go@v3
         with:
           go-version: ${{ env.GO_VERSION }}
+      - name: pre-build
+        run: make pre-build
       - name: build
         run: make build
 
@@ -65,6 +67,28 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
       - name: test
         run: make test
+      - name: report-coverage
+        uses: codecov/codecov-action@v3
+        with:
+          token: ${{ secrets.CODECOV_UPLOAD_TOKEN }}
+          files: /home/runner/work/cluster-permission/cluster-permission/go/src/github.com/open-cluster-management/cluster-permission/coverage.out
+          flags: unit
+          name: unit
+          verbose: true
+          fail_ci_if_error: true
+
+  go-sec-scan:
+    name: go-sec-scan
+    runs-on: ubuntu-latest
+    env:
+      GO111MODULE: on
+    steps:
+      - name: Checkout Source
+        uses: actions/checkout@v3
+      - name: Run Gosec Security Scanner
+        uses: securego/gosec@master
+        with:
+          args: -exclude-generated ./...
 
   e2e:
     name: e2e
