@@ -5,7 +5,7 @@ set -o pipefail
 
 echo "SETUP install cluster-permission"
 kubectl config use-context kind-hub
-kubectl apply -f config/crd/bases/rbac.open-cluster-management.io_clusterpermissions.yaml
+kubectl apply -f config/crds
 kubectl apply -f config/rbac
 kubectl apply -f config/deploy
 if kubectl wait --for=condition=available --timeout=600s deployment/cluster-permission -n open-cluster-management; then
