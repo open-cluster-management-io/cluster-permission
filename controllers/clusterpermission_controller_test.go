@@ -18,16 +18,21 @@ package controllers
 
 import (
 	"context"
+	"reflect"
+	"testing"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
-
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/kubernetes/scheme"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+
 	addonv1alpha1 "open-cluster-management.io/api/addon/v1alpha1"
 	clusterv1 "open-cluster-management.io/api/cluster/v1"
 	workv1 "open-cluster-management.io/api/work/v1"
@@ -450,3 +455,106 @@ var _ = Describe("ClusterPermission controller", func() {
 		})
 	})
 })
+
+func TestGenerateSubject(t *testing.T) {
+	cases := []struct {
+		name             string
+		subject          rbacv1.Subject
+		clusterNamespace string
+		objs             []client.Object
+		expectedSubject  rbacv1.Subject
+	}{
+		{
+			name: "subject is not ManagedServiceAccount",
+			subject: rbacv1.Subject{
+				Kind:      "ServiceAccount",
+				Name:      "test",
+				Namespace: "test",
+			},
+			expectedSubject: rbacv1.Subject{
+				Kind:      "ServiceAccount",
+				Name:      "test",
+				Namespace: "test",
+			},
+		},
+		{
+			name: "subject is ManagedServiceAccount, msa status namespace is not empty",
+			subject: rbacv1.Subject{
+				Kind:     "ManagedServiceAccount",
+				APIGroup: msav1alpha1.GroupVersion.Group,
+				Name:     "test",
+			},
+			clusterNamespace: "cluster1",
+			objs: []client.Object{
+				&addonv1alpha1.ManagedClusterAddOn{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      msacommon.AddonName,
+						Namespace: "cluster1",
+					},
+					Spec: addonv1alpha1.ManagedClusterAddOnSpec{
+						InstallNamespace: "test",
+					},
+					Status: addonv1alpha1.ManagedClusterAddOnStatus{
+						Namespace: "ocm-agent-addon",
+					},
+				},
+			},
+			expectedSubject: rbacv1.Subject{
+				Kind:      "ServiceAccount",
+				APIGroup:  corev1.GroupName,
+				Name:      "test",
+				Namespace: "ocm-agent-addon",
+			},
+		},
+		{
+			name: "subject is ManagedServiceAccount, msa status namespace is empty",
+			subject: rbacv1.Subject{
+				Kind:     "ManagedServiceAccount",
+				APIGroup: msav1alpha1.GroupVersion.Group,
+				Name:     "test",
+			},
+			clusterNamespace: "cluster1",
+			objs: []client.Object{
+				&addonv1alpha1.ManagedClusterAddOn{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      msacommon.AddonName,
+						Namespace: "cluster1",
+					},
+					Spec: addonv1alpha1.ManagedClusterAddOnSpec{
+						InstallNamespace: "ocm-agent-addon",
+					},
+				},
+			},
+			expectedSubject: rbacv1.Subject{
+				Kind:      "ServiceAccount",
+				APIGroup:  corev1.GroupName,
+				Name:      "test",
+				Namespace: "ocm-agent-addon",
+			},
+		},
+	}
+
+	var testscheme = scheme.Scheme
+	err := addonv1alpha1.Install(testscheme)
+	if err != nil {
+		t.Errorf("Install addon scheme error = %v", err)
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			fakeClient := fake.NewClientBuilder().WithScheme(testscheme).WithObjects(c.objs...).Build()
+			cpr := &ClusterPermissionReconciler{
+				Client: fakeClient,
+				Scheme: testscheme,
+			}
+
+			subject, err := cpr.generateSubject(context.TODO(), c.subject, c.clusterNamespace)
+			if err != nil {
+				t.Errorf("generateSubject() error = %v", err)
+			}
+
+			if !reflect.DeepEqual(subject, c.expectedSubject) {
+				t.Errorf("expected subject %v, got %v", c.expectedSubject, subject)
+			}
+		})
+	}
+}

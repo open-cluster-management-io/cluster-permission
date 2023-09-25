@@ -211,9 +211,9 @@ func (r *ClusterPermissionReconciler) generateSubject(ctx context.Context,
 			return rbacv1.Subject{}, err
 		}
 
-		ns := addon.Spec.InstallNamespace
+		ns := addon.Status.Namespace
 		if ns == "" {
-			ns = "open-cluster-management-agent-addon"
+			ns = addon.Spec.InstallNamespace
 		}
 
 		return rbacv1.Subject{
