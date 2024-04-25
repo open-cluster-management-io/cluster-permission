@@ -37,7 +37,8 @@ import (
 	workv1 "open-cluster-management.io/api/work/v1"
 	cpv1alpha1 "open-cluster-management.io/cluster-permission/api/v1alpha1"
 	"open-cluster-management.io/cluster-permission/controllers"
-	msav1alpha1 "open-cluster-management.io/managed-serviceaccount/api/v1alpha1"
+	msav1beta1 "open-cluster-management.io/managed-serviceaccount/apis/authentication/v1beta1"
+	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 )
 
 // Options for command line flag parsing
@@ -66,7 +67,7 @@ var (
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 	utilruntime.Must(cpv1alpha1.AddToScheme(scheme))
-	utilruntime.Must(msav1alpha1.AddToScheme(scheme))
+	utilruntime.Must(msav1beta1.AddToScheme(scheme))
 	utilruntime.Must(addonv1alpha1.AddToScheme(scheme))
 	utilruntime.Must(clusterv1.AddToScheme(scheme))
 	utilruntime.Must(workv1.AddToScheme(scheme))
@@ -124,9 +125,10 @@ func main() {
 
 	// Create a new Cmd to provide shared dependencies and start components
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
-		Scheme:                  scheme,
-		MetricsBindAddress:      fmt.Sprintf("%s:%d", metricsHost, metricsPort),
-		Port:                    operatorMetricsPort,
+		Scheme: scheme,
+		Metrics: metricsserver.Options{
+			BindAddress: fmt.Sprintf("%s:%d", metricsHost, metricsPort),
+		},
 		LeaderElection:          enableLeaderElection,
 		LeaderElectionID:        "cluster-permission-leader.open-cluster-management.io",
 		LeaderElectionNamespace: "kube-system",

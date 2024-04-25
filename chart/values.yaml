@@ -1,4 +1,5 @@
 global:
+  hubSize: "Small"
   imageOverrides:
     cluster_permission: ''
   namespace: open-cluster-management
