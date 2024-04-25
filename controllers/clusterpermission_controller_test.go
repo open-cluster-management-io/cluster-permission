@@ -37,7 +37,7 @@ import (
 	clusterv1 "open-cluster-management.io/api/cluster/v1"
 	workv1 "open-cluster-management.io/api/work/v1"
 	cpv1alpha1 "open-cluster-management.io/cluster-permission/api/v1alpha1"
-	msav1alpha1 "open-cluster-management.io/managed-serviceaccount/api/v1alpha1"
+	msav1beta1 "open-cluster-management.io/managed-serviceaccount/apis/authentication/v1beta1"
 	msacommon "open-cluster-management.io/managed-serviceaccount/pkg/common"
 )
 
@@ -158,7 +158,7 @@ var _ = Describe("ClusterPermission controller", func() {
 			}).Should(BeTrue())
 
 			By("Creating the ManagedServiceAccount")
-			managedSA := msav1alpha1.ManagedServiceAccount{
+			managedSA := msav1beta1.ManagedServiceAccount{
 				ObjectMeta: metav1.ObjectMeta{
 					Namespace: clusterName,
 					Name:      msaName,
@@ -481,7 +481,7 @@ func TestGenerateSubject(t *testing.T) {
 			name: "subject is ManagedServiceAccount, msa status namespace is not empty",
 			subject: rbacv1.Subject{
 				Kind:     "ManagedServiceAccount",
-				APIGroup: msav1alpha1.GroupVersion.Group,
+				APIGroup: msav1beta1.GroupVersion.Group,
 				Name:     "test",
 			},
 			clusterNamespace: "cluster1",
@@ -510,7 +510,7 @@ func TestGenerateSubject(t *testing.T) {
 			name: "subject is ManagedServiceAccount, msa status namespace is empty",
 			subject: rbacv1.Subject{
 				Kind:     "ManagedServiceAccount",
-				APIGroup: msav1alpha1.GroupVersion.Group,
+				APIGroup: msav1beta1.GroupVersion.Group,
 				Name:     "test",
 			},
 			clusterNamespace: "cluster1",

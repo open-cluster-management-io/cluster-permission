@@ -36,7 +36,7 @@ import (
 	clusterv1 "open-cluster-management.io/api/cluster/v1"
 	workv1 "open-cluster-management.io/api/work/v1"
 	cpv1alpha1 "open-cluster-management.io/cluster-permission/api/v1alpha1"
-	msav1alpha1 "open-cluster-management.io/managed-serviceaccount/api/v1alpha1"
+	msav1beta1 "open-cluster-management.io/managed-serviceaccount/apis/authentication/v1beta1"
 )
 
 // These tests use Ginkgo (BDD-style Go testing framework). Refer to
@@ -81,7 +81,7 @@ var _ = BeforeSuite(func() {
 
 	err = cpv1alpha1.AddToScheme(scheme.Scheme)
 	Expect(err).NotTo(HaveOccurred())
-	err = msav1alpha1.AddToScheme(scheme.Scheme)
+	err = msav1beta1.AddToScheme(scheme.Scheme)
 	Expect(err).NotTo(HaveOccurred())
 	err = addonv1alpha1.AddToScheme(scheme.Scheme)
 	Expect(err).NotTo(HaveOccurred())

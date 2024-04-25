@@ -37,7 +37,7 @@ import (
 	clusterv1 "open-cluster-management.io/api/cluster/v1"
 	workv1 "open-cluster-management.io/api/work/v1"
 	cpv1alpha1 "open-cluster-management.io/cluster-permission/api/v1alpha1"
-	msav1alpha1 "open-cluster-management.io/managed-serviceaccount/api/v1alpha1"
+	msav1beta1 "open-cluster-management.io/managed-serviceaccount/apis/authentication/v1beta1"
 	msacommon "open-cluster-management.io/managed-serviceaccount/pkg/common"
 )
 
@@ -187,8 +187,8 @@ func (r *ClusterPermissionReconciler) updateStatus(ctx context.Context,
 // if it's a ManagedServiceAccount then verify that the CR exists
 func (r *ClusterPermissionReconciler) validateSubject(ctx context.Context,
 	subject rbacv1.Subject, clusterNamespace string) error {
-	if subject.APIGroup == msav1alpha1.GroupVersion.Group && subject.Kind == "ManagedServiceAccount" {
-		var msa msav1alpha1.ManagedServiceAccount
+	if subject.APIGroup == msav1beta1.GroupVersion.Group && subject.Kind == "ManagedServiceAccount" {
+		var msa msav1beta1.ManagedServiceAccount
 		return r.Get(ctx, types.NamespacedName{
 			Namespace: clusterNamespace,
 			Name:      subject.Name,
@@ -203,7 +203,7 @@ func (r *ClusterPermissionReconciler) validateSubject(ctx context.Context,
 // othwerise, return the same subject as before
 func (r *ClusterPermissionReconciler) generateSubject(ctx context.Context,
 	subject rbacv1.Subject, clusterNamespace string) (rbacv1.Subject, error) {
-	if subject.APIGroup == msav1alpha1.GroupVersion.Group && subject.Kind == "ManagedServiceAccount" {
+	if subject.APIGroup == msav1beta1.GroupVersion.Group && subject.Kind == "ManagedServiceAccount" {
 		// check the ManagedServiceAccount is installed and
 		// determine the namespace of the ServiceAccount on the managed cluster
 		var addon addonv1alpha1.ManagedClusterAddOn
