@@ -27,7 +27,6 @@ else
     exit 1
 fi
 
-kubectl config use-context kind-cluster1
 if kubectl -n default get role clusterpermission-sample; then
     echo "clusterpermission-sample role found"
 else
