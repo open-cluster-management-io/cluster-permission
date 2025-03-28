@@ -55,6 +55,7 @@ spec:
                           items:
                             type: string
                           type: array
+                          x-kubernetes-list-type: atomic
                         nonResourceURLs:
                           description: NonResourceURLs is a set of partial urls that
                             a user should have access to.  *s are allowed, but only
@@ -67,6 +68,7 @@ spec:
                           items:
                             type: string
                           type: array
+                          x-kubernetes-list-type: atomic
                         resourceNames:
                           description: ResourceNames is an optional white list of
                             names that the rule applies to.  An empty set means that
@@ -74,12 +76,14 @@ spec:
                           items:
                             type: string
                           type: array
+                          x-kubernetes-list-type: atomic
                         resources:
                           description: Resources is a list of resources this rule
                             applies to. '*' represents all resources.
                           items:
                             type: string
                           type: array
+                          x-kubernetes-list-type: atomic
                         verbs:
                           description: Verbs is a list of Verbs that apply to ALL
                             the ResourceKinds contained in this rule. '*' represents
@@ -87,6 +91,7 @@ spec:
                           items:
                             type: string
                           type: array
+                          x-kubernetes-list-type: atomic
                       required:
                       - verbs
                       type: object
@@ -98,6 +103,30 @@ spec:
                 description: ClusterRoleBinding represents the ClusterRoleBinding
                   that is being created on the managed cluster
                 properties:
+                  name:
+                    description: Name of the ClusterRoleBinding if a name different
+                      than the ClusterPermission name is used
+                    type: string
+                  roleRef:
+                    description: RoleRef contains information that points to the ClusterRole
+                      being used
+                    properties:
+                      apiGroup:
+                        description: APIGroup is the group for the resource being
+                          referenced
+                        type: string
+                      kind:
+                        description: Kind is the type of resource being referenced
+                        type: string
+                      name:
+                        description: Name is the name of resource being referenced
+                        type: string
+                    required:
+                    - apiGroup
+                    - kind
+                    - name
+                    type: object
+                    x-kubernetes-map-type: atomic
                   subject:
                     description: Subject contains a reference to the object or user
                       identities a ClusterPermission binding applies to. Besides the
@@ -138,6 +167,10 @@ spec:
                   description: RoleBinding represents the RoleBinding that is being
                     created on the managed cluster
                   properties:
+                    name:
+                      description: Name of the RoleBinding if a name different than
+                        the ClusterPermission name is used
+                      type: string
                     namespace:
                       description: Namespace of the Role for that is being created
                         on the managed cluster
@@ -173,11 +206,13 @@ spec:
                                 items:
                                   type: string
                                 type: array
+                                x-kubernetes-list-type: atomic
                             required:
                             - key
                             - operator
                             type: object
                           type: array
+                          x-kubernetes-list-type: atomic
                         matchLabels:
                           additionalProperties:
                             type: string
@@ -193,8 +228,15 @@ spec:
                       description: RoleRef contains information that points to the
                         role being used
                       properties:
+                        apiGroup:
+                          description: APIGroup is the group for the resource being
+                            referenced
+                          type: string
                         kind:
                           description: Kind is the type of resource being referenced
+                          type: string
+                        name:
+                          description: Name is the name of resource being referenced
                           type: string
                       required:
                       - kind
@@ -277,11 +319,13 @@ spec:
                                 items:
                                   type: string
                                 type: array
+                                x-kubernetes-list-type: atomic
                             required:
                             - key
                             - operator
                             type: object
                           type: array
+                          x-kubernetes-list-type: atomic
                         matchLabels:
                           additionalProperties:
                             type: string
@@ -310,6 +354,7 @@ spec:
                             items:
                               type: string
                             type: array
+                            x-kubernetes-list-type: atomic
                           nonResourceURLs:
                             description: NonResourceURLs is a set of partial urls
                               that a user should have access to.  *s are allowed,
@@ -322,6 +367,7 @@ spec:
                             items:
                               type: string
                             type: array
+                            x-kubernetes-list-type: atomic
                           resourceNames:
                             description: ResourceNames is an optional white list of
                               names that the rule applies to.  An empty set means
@@ -329,12 +375,14 @@ spec:
                             items:
                               type: string
                             type: array
+                            x-kubernetes-list-type: atomic
                           resources:
                             description: Resources is a list of resources this rule
                               applies to. '*' represents all resources.
                             items:
                               type: string
                             type: array
+                            x-kubernetes-list-type: atomic
                           verbs:
                             description: Verbs is a list of Verbs that apply to ALL
                               the ResourceKinds contained in this rule. '*' represents
@@ -342,6 +390,7 @@ spec:
                             items:
                               type: string
                             type: array
+                            x-kubernetes-list-type: atomic
                         required:
                         - verbs
                         type: object

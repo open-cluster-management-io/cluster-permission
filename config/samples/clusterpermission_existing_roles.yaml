@@ -1,0 +1,36 @@
+apiVersion: rbac.open-cluster-management.io/v1alpha1
+kind: ClusterPermission
+metadata:
+  name: clusterpermission-existing-role-sample
+spec:
+  roleBindings:
+    - name: default-rb-cluster1
+      namespace: default
+      roleRef:
+        apiGroup: rbac.authorization.k8s.io
+        kind: ClusterRole
+        name: argocd-application-controller-1
+      subject:
+        namespace: openshift-gitops
+        kind: ServiceAccount
+        name: sa-sample-existing
+    - name: kubevirt-rb-cluster1
+      namespace: kubevirt
+      roleRef:
+        apiGroup: rbac.authorization.k8s.io
+        kind: Role
+        name: argocd-application-controller-2
+      subject:
+        apiGroup: rbac.authorization.k8s.io
+        kind: User
+        name: user1
+  clusterRoleBinding:
+      name: crb-cluster1-argo-app-con-3
+      roleRef:
+        apiGroup: rbac.authorization.k8s.io
+        kind: ClusterRole
+        name: argocd-application-controller-3
+      subject:
+        apiGroup: rbac.authorization.k8s.io
+        kind: Group
+        name: group1

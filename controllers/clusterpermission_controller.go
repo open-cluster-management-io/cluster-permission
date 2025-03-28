@@ -82,18 +82,19 @@ func (r *ClusterPermissionReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	log.Info("validating ClusterPermission")
 
 	/* Validations */
-	if clusterPermission.Spec.ClusterRole == nil && clusterPermission.Spec.Roles == nil {
-		log.Info("no roles defined for ClusterPermission")
+	if clusterPermission.Spec.ClusterRoleBinding == nil && clusterPermission.Spec.RoleBindings == nil {
+		log.Info("no bindings defined for ClusterPermission")
 
 		err := r.updateStatus(ctx, &clusterPermission, &metav1.Condition{
 			Type:    cpv1alpha1.ConditionTypeValidation,
 			Status:  metav1.ConditionFalse,
-			Reason:  "FailedValidationNoRolesDefined",
-			Message: "no roles defined",
+			Reason:  "FailedValidationNoBindingsDefined",
+			Message: "no bindings defined",
 		})
 
 		return ctrl.Result{}, err
 	}
+
 	// verify the ClusterPermission namespace is in a ManagedCluster namespace
 	var managedCluster clusterv1.ManagedCluster
 	if err := r.Get(ctx, types.NamespacedName{Name: clusterPermission.Namespace}, &managedCluster); err != nil {
@@ -260,19 +261,31 @@ func (r *ClusterPermissionReconciler) generateManifestWorkPayload(ctx context.Co
 			return nil, nil, nil, nil, err
 		}
 
+		// default to ClusterPermission name unless using custom name
+		clusterRoleBindingName := clusterPermission.Name
+		if clusterPermission.Spec.ClusterRoleBinding.Name != "" {
+			clusterRoleBindingName = clusterPermission.Spec.ClusterRoleBinding.Name
+		}
+
+		// default to creating a ClusterRole unless using existing ClusterRole
+		clusterRoleBindingRoleRef := rbacv1.RoleRef{
+			APIGroup: rbacv1.GroupName,
+			Kind:     "ClusterRole",
+			Name:     clusterPermission.Name,
+		}
+		if clusterPermission.Spec.ClusterRoleBinding.RoleRef != nil {
+			clusterRoleBindingRoleRef = *clusterPermission.Spec.ClusterRoleBinding.RoleRef
+		}
+
 		clusterRoleBinding = &rbacv1.ClusterRoleBinding{
 			TypeMeta: metav1.TypeMeta{
 				APIVersion: rbacv1.SchemeGroupVersion.String(),
 				Kind:       "ClusterRoleBinding",
 			},
 			ObjectMeta: metav1.ObjectMeta{
-				Name: clusterPermission.Name,
+				Name: clusterRoleBindingName,
 			},
-			RoleRef: rbacv1.RoleRef{
-				APIGroup: rbacv1.GroupName,
-				Kind:     "ClusterRole",
-				Name:     clusterPermission.Name,
-			},
+			RoleRef:  clusterRoleBindingRoleRef,
 			Subjects: []rbacv1.Subject{subject},
 		}
 	}
@@ -398,20 +411,40 @@ func (r *ClusterPermissionReconciler) generateManifestWorkPayload(ctx context.Co
 					return nil, nil, nil, nil, err
 				}
 
+				roleBindingName := clusterPermission.Name
+				if roleBinding.Name != "" {
+					roleBindingName = roleBinding.Name
+				}
+
+				roleBindingRoleRef := rbacv1.RoleRef{
+					APIGroup: rbacv1.GroupName,
+					Kind:     roleBinding.RoleRef.Kind,
+					Name:     clusterPermission.Name,
+				}
+				if roleBinding.RoleRef.APIGroup != "" && roleBinding.RoleRef.Name != "" {
+					roleBindingRoleRef = rbacv1.RoleRef{
+						APIGroup: roleBinding.RoleRef.APIGroup,
+						Kind:     roleBinding.RoleRef.Kind,
+						Name:     roleBinding.RoleRef.Name,
+					}
+				} else if roleBinding.RoleRef.APIGroup == "" && roleBinding.RoleRef.Name != "" {
+					return nil, nil, nil, nil,
+						errors.New("the RoleBinding for Namespace " + roleBinding.Namespace + " missing APIGroup for the RoleRef")
+				} else if roleBinding.RoleRef.APIGroup != "" && roleBinding.RoleRef.Name == "" {
+					return nil, nil, nil, nil,
+						errors.New("the RoleBinding for Namespace " + roleBinding.Namespace + " missing Name for the RoleRef")
+				}
+
 				roleBindings = append(roleBindings, rbacv1.RoleBinding{
 					TypeMeta: metav1.TypeMeta{
 						APIVersion: rbacv1.SchemeGroupVersion.String(),
 						Kind:       "RoleBinding",
 					},
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      clusterPermission.Name,
+						Name:      roleBindingName,
 						Namespace: roleBinding.Namespace,
 					},
-					RoleRef: rbacv1.RoleRef{
-						APIGroup: rbacv1.GroupName,
-						Kind:     roleBinding.RoleRef.Kind,
-						Name:     clusterPermission.Name,
-					},
+					RoleRef:  roleBindingRoleRef,
 					Subjects: []rbacv1.Subject{subject},
 				})
 			}
