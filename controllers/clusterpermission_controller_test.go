@@ -284,12 +284,88 @@ var _ = Describe("ClusterPermission controller", func() {
 
 			By("Deleting the ClusterPermission")
 			Expect(k8sClient.Delete(ctx, &clusterPermission)).Should(Succeed())
+
+			By("Creating the ClusterPermission with existing roles")
+			clusterPermissionExistingRoles := cpv1alpha1.ClusterPermission{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "clusterpermission-existing-roles",
+					Namespace: clusterName,
+				},
+				Spec: cpv1alpha1.ClusterPermissionSpec{
+					RoleBindings: &[]cpv1alpha1.RoleBinding{
+						{
+							Namespace: "default",
+							Name:      "default-rb-" + clusterName,
+							RoleRef: cpv1alpha1.RoleRef{
+								APIGroup: "rbac.authorization.k8s.io",
+								Kind:     "ClusterRole",
+								Name:     "argocd-application-controller-1",
+							},
+							Subject: rbacv1.Subject{
+								Namespace: "openshift-gitops",
+								Kind:      "ServiceAccount",
+								Name:      "sa-sample-existing",
+							},
+						},
+						{
+							Namespace: "kubevirt",
+							Name:      "kubevirt-rb-" + clusterName,
+							RoleRef: cpv1alpha1.RoleRef{
+								APIGroup: "rbac.authorization.k8s.io",
+								Kind:     "Role",
+								Name:     "argocd-application-controller-2",
+							},
+							Subject: rbacv1.Subject{
+								APIGroup: "rbac.authorization.k8s.io",
+								Kind:     "User",
+								Name:     "user1",
+							},
+						},
+						{
+							Namespace: "kubevirt2",
+							RoleRef: cpv1alpha1.RoleRef{
+								APIGroup: "rbac.authorization.k8s.io",
+								Kind:     "Role",
+								Name:     "argocd-application-controller-2",
+							},
+							Subject: rbacv1.Subject{
+								APIGroup: "rbac.authorization.k8s.io",
+								Kind:     "User",
+								Name:     "user1",
+							},
+						},
+					},
+					ClusterRoleBinding: &cpv1alpha1.ClusterRoleBinding{
+						Name: "crb-" + clusterName + "-argo-app-con-3",
+						RoleRef: &rbacv1.RoleRef{
+							APIGroup: "rbac.authorization.k8s.io",
+							Kind:     "ClusterRole",
+							Name:     "argocd-application-controller-3",
+						},
+						Subject: rbacv1.Subject{
+							APIGroup: "rbac.authorization.k8s.io",
+							Kind:     "Group",
+							Name:     "group1",
+						},
+					},
+				},
+			}
+
+			Expect(k8sClient.Create(ctx, &clusterPermissionExistingRoles)).Should(Succeed())
+			mwKeyExistingRoles := types.NamespacedName{Name: generateManifestWorkName(clusterPermissionExistingRoles), Namespace: clusterName}
+			mwExistingRoles := workv1.ManifestWork{}
+			Eventually(func() bool {
+				if err := k8sClient.Get(ctx, mwKeyExistingRoles, &mwExistingRoles); err != nil {
+					return false
+				}
+				return true
+			}).Should(BeTrue())
 		})
 	})
 
 	Context("When ClusterPermission is created without prereqs", func() {
 		It("Should have error status", func() {
-			By("Creating the ClusterPermission with no rules")
+			By("Creating the ClusterPermission with no rules and bindings")
 			clusterPermission := cpv1alpha1.ClusterPermission{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      mbacName,
@@ -452,6 +528,60 @@ var _ = Describe("ClusterPermission controller", func() {
 
 			By("Deleting the ClusterPermission")
 			Expect(k8sClient.Delete(ctx, &clusterPermission)).Should(Succeed())
+
+			By("Creating the ClusterPermission with missing RoleRef APIGroup")
+			clusterPermissionMissingAPIGroup := cpv1alpha1.ClusterPermission{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "clusterpermission-roleref-missing-apigroup",
+					Namespace: clusterName,
+				},
+				Spec: cpv1alpha1.ClusterPermissionSpec{
+					RoleBindings: &[]cpv1alpha1.RoleBinding{
+						{
+							Namespace: "default",
+							Name:      "default-rb-" + clusterName,
+							RoleRef: cpv1alpha1.RoleRef{
+								Kind: "ClusterRole",
+								Name: "argocd-application-controller-1",
+							},
+							Subject: rbacv1.Subject{
+								Namespace: "openshift-gitops",
+								Kind:      "ServiceAccount",
+								Name:      "sa-sample-existing",
+							},
+						},
+					},
+				},
+			}
+
+			Expect(k8sClient.Create(ctx, &clusterPermissionMissingAPIGroup)).Should(Succeed())
+
+			By("Creating the ClusterPermission with missing RoleRef Name")
+			clusterPermissionMissingName := cpv1alpha1.ClusterPermission{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "clusterpermission-roleref-missing-name",
+					Namespace: clusterName,
+				},
+				Spec: cpv1alpha1.ClusterPermissionSpec{
+					RoleBindings: &[]cpv1alpha1.RoleBinding{
+						{
+							Namespace: "default",
+							Name:      "default-rb-" + clusterName,
+							RoleRef: cpv1alpha1.RoleRef{
+								APIGroup: "rbac.authorization.k8s.io",
+								Kind:     "ClusterRole",
+							},
+							Subject: rbacv1.Subject{
+								Namespace: "openshift-gitops",
+								Kind:      "ServiceAccount",
+								Name:      "sa-sample-existing",
+							},
+						},
+					},
+				},
+			}
+
+			Expect(k8sClient.Create(ctx, &clusterPermissionMissingName)).Should(Succeed())
 		})
 	})
 })
