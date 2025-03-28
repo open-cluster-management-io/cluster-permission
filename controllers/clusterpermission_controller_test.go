@@ -321,6 +321,19 @@ var _ = Describe("ClusterPermission controller", func() {
 								Name:     "user1",
 							},
 						},
+						{
+							Namespace: "kubevirt2",
+							RoleRef: cpv1alpha1.RoleRef{
+								APIGroup: "rbac.authorization.k8s.io",
+								Kind:     "Role",
+								Name:     "argocd-application-controller-2",
+							},
+							Subject: rbacv1.Subject{
+								APIGroup: "rbac.authorization.k8s.io",
+								Kind:     "User",
+								Name:     "user1",
+							},
+						},
 					},
 					ClusterRoleBinding: &cpv1alpha1.ClusterRoleBinding{
 						Name: "crb-" + clusterName + "-argo-app-con-3",
