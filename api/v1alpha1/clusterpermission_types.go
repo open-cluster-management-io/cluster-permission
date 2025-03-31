@@ -58,6 +58,14 @@ type ClusterRoleBinding struct {
 	// Besides the typical subject for a binding, a ManagedServiceAccount can be used as a subject as well.
 	// +required
 	rbacv1.Subject `json:"subject"`
+
+	// Name of the ClusterRoleBinding if a name different than the ClusterPermission name is used
+	// +optional
+	Name string `json:"name,omitempty" protobuf:"bytes,4,opt,name=name"`
+
+	// RoleRef contains information that points to the ClusterRole being used
+	// +optional
+	RoleRef *rbacv1.RoleRef `json:"roleRef,omitempty"`
 }
 
 // Role represents the Role that is being created on the managed cluster
@@ -95,6 +103,10 @@ type RoleBinding struct {
 	// Note: the namespace must exists on the hub cluster
 	// +optional
 	NamespaceSelector *metav1.LabelSelector `json:"namespaceSelector,omitempty"`
+
+	// Name of the RoleBinding if a name different than the ClusterPermission name is used
+	// +optional
+	Name string `json:"name,omitempty" protobuf:"bytes,4,opt,name=name"`
 }
 
 // RoleRef contains information that points to the role being used
@@ -102,6 +114,14 @@ type RoleRef struct {
 	// Kind is the type of resource being referenced
 	// +required
 	Kind string `json:"kind"`
+
+	// APIGroup is the group for the resource being referenced
+	// +optional
+	APIGroup string `json:"apiGroup" protobuf:"bytes,1,opt,name=apiGroup"`
+
+	// Name is the name of resource being referenced
+	// +optional
+	Name string `json:"name" protobuf:"bytes,3,opt,name=name"`
 }
 
 // ClusterPermissionStatus defines the observed state of ClusterPermission
