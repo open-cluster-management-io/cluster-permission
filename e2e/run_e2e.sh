@@ -51,3 +51,22 @@ else
     echo "clusterpermission-sample clusterrolebinding not found"
     exit 1
 fi
+
+echo "TEST ClusterPermission with existing roles"
+kubectl config use-context kind-hub
+kubectl apply -f config/samples/clusterpermission_existing_roles.yaml -n cluster1
+sleep 10
+work_kubectl_command=$(kubectl -n cluster1 get clusterpermission clusterpermission-existing-role-sample -o yaml | grep kubectl | grep ManifestWork)
+if $work_kubectl_command; then
+    echo "ManifestWork found"
+else
+    echo "ManifestWork not found"
+    exit 1
+fi
+
+if kubectl -n default get rolebinding default-rb-cluster1; then
+    echo "default-rb-cluster1 rolebinding found"
+else
+    echo "default-rb-cluster1 rolebinding not found"
+    exit 1
+fi
