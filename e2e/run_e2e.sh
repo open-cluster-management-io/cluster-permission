@@ -64,7 +64,6 @@ else
     exit 1
 fi
 
-kubectl config use-context kind-cluster1
 if kubectl -n default get rolebinding default-rb-cluster1; then
     echo "default-rb-cluster1 rolebinding found"
 else
