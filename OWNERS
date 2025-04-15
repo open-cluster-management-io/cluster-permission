@@ -1,10 +1,8 @@
 approvers:
-- lennysgarage
+- fxiang1
 - mikeshng
 - philipwu08
 - xiangjingli
-reviewers:
+
+emeritus_approvers:
 - lennysgarage
-- mikeshng
-- philipwu08
-- xiangjingli
