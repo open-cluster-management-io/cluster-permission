@@ -83,7 +83,7 @@ else
     exit 1
 fi
 
-if kubectl -n default get rolebinding kubevirt-rb-cluster1-users1; then
+if kubectl -n kube-system get rolebinding kubevirt-rb-cluster1-users1; then
     echo "kubevirt-rb-cluster1-users1 rolebinding found"
 else
     echo "kubevirt-rb-cluster1-users1 rolebinding not found"
