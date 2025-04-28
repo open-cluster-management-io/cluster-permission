@@ -208,12 +208,11 @@ func (r *ClusterPermissionReconciler) validateSubject(ctx context.Context, subje
 }
 
 func getSubjects(subject rbacv1.Subject, subjects []rbacv1.Subject) []rbacv1.Subject {
-	crbSubjects := []rbacv1.Subject{}
 	if len(subjects) > 0 {
 		return subjects
 	} else {
 		// should be safe since one of them has to exist
-		return append(crbSubjects, subject)
+		return []rbacv1.Subject{subject}
 	}
 }
 

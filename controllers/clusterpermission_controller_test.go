@@ -94,6 +94,7 @@ var _ = Describe("ClusterPermission controller", func() {
 						}},
 					}},
 					ClusterRoleBinding: &cpv1alpha1.ClusterRoleBinding{
+						Subjects: []rbacv1.Subject{},
 						Subject: rbacv1.Subject{
 							Kind:      "ServiceAccount",
 							Name:      "klusterlet-work-sa",
@@ -104,6 +105,7 @@ var _ = Describe("ClusterPermission controller", func() {
 						{
 							Namespace: "default",
 							RoleRef:   cpv1alpha1.RoleRef{Kind: "ClusterRole"},
+							Subjects:  []rbacv1.Subject{},
 							Subject: rbacv1.Subject{
 								Kind:      "ServiceAccount",
 								Name:      "klusterlet-work-sa",
@@ -412,6 +414,7 @@ var _ = Describe("ClusterPermission controller", func() {
 						}},
 					},
 					ClusterRoleBinding: &cpv1alpha1.ClusterRoleBinding{
+						Subjects: []rbacv1.Subject{},
 						Subject: rbacv1.Subject{
 							APIGroup: "authentication.open-cluster-management.io",
 							Kind:     "ManagedServiceAccount",
