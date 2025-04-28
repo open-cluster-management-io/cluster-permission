@@ -73,7 +73,7 @@ fi
 
 echo "TEST ClusterPermission with users and groups"
 kubectl config use-context kind-hub
-kubectl apply -f config/samples/clusterpermission-users-groups.yaml -n cluster1
+kubectl apply -f config/samples/clusterpermission_users_groups.yaml -n cluster1
 sleep 10
 work_kubectl_command=$(kubectl -n cluster1 get clusterpermission clusterpermission-users-groups -o yaml | grep kubectl | grep ManifestWork)
 if $work_kubectl_command; then
