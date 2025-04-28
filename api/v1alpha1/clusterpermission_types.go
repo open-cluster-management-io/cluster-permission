@@ -34,6 +34,7 @@ type ClusterPermissionSpec struct {
 
 	// ClusterRoleBinding represents the ClusterRoleBinding that is being created on the managed cluster
 	// +optional
+	// +kubebuilder:validation:XValidation:rule="has(self.subject) || has(self.subjects)",message="Either subject or subjects has to exist in clusterRoleBinding"
 	ClusterRoleBinding *ClusterRoleBinding `json:"clusterRoleBinding,omitempty"`
 
 	// Roles represents roles that are being created on the managed cluster
@@ -42,6 +43,7 @@ type ClusterPermissionSpec struct {
 
 	// RoleBindings represents RoleBindings that are being created on the managed cluster
 	// +optional
+	// +kubebuilder:validation:XValidation:rule="self.all(i, has(i.subject) || has(i.subjects))",message="Either subject or subjects has to exist in every roleBinding"
 	RoleBindings *[]RoleBinding `json:"roleBindings,omitempty"`
 }
 
@@ -56,8 +58,15 @@ type ClusterRole struct {
 type ClusterRoleBinding struct {
 	// Subject contains a reference to the object or user identities a ClusterPermission binding applies to.
 	// Besides the typical subject for a binding, a ManagedServiceAccount can be used as a subject as well.
-	// +required
-	rbacv1.Subject `json:"subject"`
+	// If both subject and subjects exist then only subjects will be used.
+	// +optional
+	Subject rbacv1.Subject `json:"subject"`
+
+	// Subjects contains an array of references to objects or user identities a ClusterPermission binding applies to.
+	// Besides the typical subject for a binding, a ManagedServiceAccount can be used as a subject as well.
+	// If both subject and subjects exist then only subjects will be used.
+	// +optional
+	Subjects []rbacv1.Subject `json:"subjects"`
 
 	// Name of the ClusterRoleBinding if a name different than the ClusterPermission name is used
 	// +optional
@@ -88,8 +97,15 @@ type Role struct {
 type RoleBinding struct {
 	// Subject contains a reference to the object or user identities a ClusterPermission binding applies to.
 	// Besides the typical subject for a binding, a ManagedServiceAccount can be used as a subject as well.
-	// +required
+	// If both subject and subjects exist then only subjects will be used.
+	// +optional
 	rbacv1.Subject `json:"subject"`
+
+	// Subjects contains an array of references to objects or user identities a ClusterPermission binding applies to.
+	// Besides the typical subject for a binding, a ManagedServiceAccount can be used as a subject as well.
+	// If both subject and subjects exist then only subjects will be used.
+	// +optional
+	Subjects []rbacv1.Subject `json:"subjects"`
 
 	// RoleRef contains information that points to the role being used
 	// +required

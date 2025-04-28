@@ -180,6 +180,11 @@ func (in *ClusterRole) DeepCopy() *ClusterRole {
 func (in *ClusterRoleBinding) DeepCopyInto(out *ClusterRoleBinding) {
 	*out = *in
 	out.Subject = in.Subject
+	if in.Subjects != nil {
+		in, out := &in.Subjects, &out.Subjects
+		*out = make([]v1.Subject, len(*in))
+		copy(*out, *in)
+	}
 	if in.RoleRef != nil {
 		in, out := &in.RoleRef, &out.RoleRef
 		*out = new(v1.RoleRef)
@@ -228,6 +233,11 @@ func (in *Role) DeepCopy() *Role {
 func (in *RoleBinding) DeepCopyInto(out *RoleBinding) {
 	*out = *in
 	out.Subject = in.Subject
+	if in.Subjects != nil {
+		in, out := &in.Subjects, &out.Subjects
+		*out = make([]v1.Subject, len(*in))
+		copy(*out, *in)
+	}
 	out.RoleRef = in.RoleRef
 	if in.NamespaceSelector != nil {
 		in, out := &in.NamespaceSelector, &out.NamespaceSelector

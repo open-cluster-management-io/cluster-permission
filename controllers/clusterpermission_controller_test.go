@@ -24,14 +24,14 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	addonv1alpha1 "open-cluster-management.io/api/addon/v1alpha1"
 	clusterv1 "open-cluster-management.io/api/cluster/v1"
@@ -582,6 +582,15 @@ var _ = Describe("ClusterPermission controller", func() {
 			}
 
 			Expect(k8sClient.Create(ctx, &clusterPermissionMissingName)).Should(Succeed())
+
+			By("Test getSubjects()")
+			Expect(len(getSubjects(rbacv1.Subject{}, []rbacv1.Subject{
+				{
+					Namespace: "openshift-gitops",
+					Kind:      "ServiceAccount",
+					Name:      "sa-sample-existing",
+				},
+			}))).Should(Equal(1))
 		})
 	})
 })
@@ -590,6 +599,7 @@ func TestGenerateSubject(t *testing.T) {
 	cases := []struct {
 		name             string
 		subject          rbacv1.Subject
+		subjects         []rbacv1.Subject
 		clusterNamespace string
 		objs             []client.Object
 		expectedSubject  rbacv1.Subject
@@ -677,7 +687,7 @@ func TestGenerateSubject(t *testing.T) {
 				Scheme: testscheme,
 			}
 
-			subject, err := cpr.generateSubject(context.TODO(), c.subject, c.clusterNamespace)
+			subject, err := cpr.generateSubject(context.TODO(), getSubjects(c.subject, c.subjects), c.clusterNamespace)
 			if err != nil {
 				t.Errorf("generateSubject() error = %v", err)
 			}
