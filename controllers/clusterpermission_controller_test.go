@@ -700,13 +700,17 @@ func TestGenerateSubject(t *testing.T) {
 				Scheme: testscheme,
 			}
 
-			subject, err := cpr.generateSubject(context.TODO(), getSubjects(c.subject, c.subjects), c.clusterNamespace)
+			subjects, err := cpr.generateSubject(context.TODO(), getSubjects(c.subject, c.subjects), c.clusterNamespace)
 			if err != nil {
 				t.Errorf("generateSubject() error = %v", err)
 			}
 
-			if !reflect.DeepEqual(subject, c.expectedSubject) {
-				t.Errorf("expected subject %v, got %v", c.expectedSubject, subject)
+			if len(subjects) == 0 {
+				t.Errorf("generateSubject() return zero subjects")
+			}
+
+			if !reflect.DeepEqual(subjects[0], c.expectedSubject) {
+				t.Errorf("expected subject %v, got %v", c.expectedSubject, subjects[0])
 			}
 		})
 	}
