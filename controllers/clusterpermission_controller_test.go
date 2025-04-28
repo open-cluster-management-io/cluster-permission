@@ -200,6 +200,7 @@ var _ = Describe("ClusterPermission controller", func() {
 						}},
 					}},
 					ClusterRoleBinding: &cpv1alpha1.ClusterRoleBinding{
+						Subjects: []rbacv1.Subject{},
 						Subject: rbacv1.Subject{
 							APIGroup: "authentication.open-cluster-management.io",
 							Kind:     "ManagedServiceAccount",
@@ -210,6 +211,7 @@ var _ = Describe("ClusterPermission controller", func() {
 						{
 							Namespace: "default",
 							RoleRef:   cpv1alpha1.RoleRef{Kind: "ClusterRole"},
+							Subjects:  []rbacv1.Subject{},
 							Subject: rbacv1.Subject{
 								APIGroup: "authentication.open-cluster-management.io",
 								Kind:     "ManagedServiceAccount",
@@ -256,6 +258,7 @@ var _ = Describe("ClusterPermission controller", func() {
 						{
 							NamespaceSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"a": "b"}},
 							RoleRef:           cpv1alpha1.RoleRef{Kind: "ClusterRole"},
+							Subjects:          []rbacv1.Subject{},
 							Subject: rbacv1.Subject{
 								APIGroup: "authentication.open-cluster-management.io",
 								Kind:     "ManagedServiceAccount",
@@ -303,6 +306,7 @@ var _ = Describe("ClusterPermission controller", func() {
 								Kind:     "ClusterRole",
 								Name:     "argocd-application-controller-1",
 							},
+							Subjects: []rbacv1.Subject{},
 							Subject: rbacv1.Subject{
 								Namespace: "openshift-gitops",
 								Kind:      "ServiceAccount",
@@ -317,6 +321,7 @@ var _ = Describe("ClusterPermission controller", func() {
 								Kind:     "Role",
 								Name:     "argocd-application-controller-2",
 							},
+							Subjects: []rbacv1.Subject{},
 							Subject: rbacv1.Subject{
 								APIGroup: "rbac.authorization.k8s.io",
 								Kind:     "User",
@@ -330,6 +335,7 @@ var _ = Describe("ClusterPermission controller", func() {
 								Kind:     "Role",
 								Name:     "argocd-application-controller-2",
 							},
+							Subjects: []rbacv1.Subject{},
 							Subject: rbacv1.Subject{
 								APIGroup: "rbac.authorization.k8s.io",
 								Kind:     "User",
@@ -344,6 +350,7 @@ var _ = Describe("ClusterPermission controller", func() {
 							Kind:     "ClusterRole",
 							Name:     "argocd-application-controller-3",
 						},
+						Subjects: []rbacv1.Subject{},
 						Subject: rbacv1.Subject{
 							APIGroup: "rbac.authorization.k8s.io",
 							Kind:     "Group",
@@ -462,6 +469,7 @@ var _ = Describe("ClusterPermission controller", func() {
 					},
 					RoleBindings: &[]cpv1alpha1.RoleBinding{
 						{
+							Subjects: []rbacv1.Subject{},
 							Subject: rbacv1.Subject{
 								APIGroup: "authentication.open-cluster-management.io",
 								Kind:     "ManagedServiceAccount",
@@ -547,6 +555,7 @@ var _ = Describe("ClusterPermission controller", func() {
 								Kind: "ClusterRole",
 								Name: "argocd-application-controller-1",
 							},
+							Subjects: []rbacv1.Subject{},
 							Subject: rbacv1.Subject{
 								Namespace: "openshift-gitops",
 								Kind:      "ServiceAccount",
@@ -574,6 +583,7 @@ var _ = Describe("ClusterPermission controller", func() {
 								APIGroup: "rbac.authorization.k8s.io",
 								Kind:     "ClusterRole",
 							},
+							Subjects: []rbacv1.Subject{},
 							Subject: rbacv1.Subject{
 								Namespace: "openshift-gitops",
 								Kind:      "ServiceAccount",
