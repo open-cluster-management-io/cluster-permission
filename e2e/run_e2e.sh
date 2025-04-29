@@ -89,3 +89,39 @@ else
     echo "kubevirt-rb-cluster1-users1 rolebinding not found"
     exit 1
 fi
+
+if kubectl -n kube-system get rolebinding kubevirt-rb-cluster1-users1 -o yaml | grep users1: then
+    echo "kubevirt-rb-cluster1-users1 users1 found"
+else
+    echo "kubevirt-rb-cluster1-users1 users1 not found"
+    exit 1
+fi
+
+if kubectl -n kube-system get rolebinding kubevirt-rb-cluster1-users1 -o yaml | grep users2: then
+    echo "kubevirt-rb-cluster1-users1 users2 found"
+else
+    echo "kubevirt-rb-cluster1-users1 users2 not found"
+    exit 1
+fi
+
+echo "TEST ClusterPermission ClusterRoleBinding with no subject or subjects"
+crb_err_msg="The ClusterPermission \"clusterpermission-clusterrolebinding-error\" is invalid: spec.clusterRoleBinding: Invalid value: \"object\": Either subject or subjects has to exist in clusterRoleBinding"
+crb_error=$(kubectl apply -f config/samples/clusterpermission_clusterrolebinding_error.yaml -n cluster1 2>&1)
+
+if [ "$crb_error" == "$crb_err_msg" ]; then
+    echo "ClusterRoleBinding error found"
+else
+    echo "ClusterRoleBinding error not found"
+    exit 1
+fi
+
+echo "TEST ClusterPermission RoleBinding with no subject or subjects"
+rb_err_msg="The ClusterPermission "clusterpermission-rolebinding-error" is invalid: spec.roleBindings: Invalid value: "array": Either subject or subjects has to exist in every roleBinding"
+rb_error=$(kubectl apply -f config/samples/clusterpermission_rolebinding_error.yaml -n cluster1 2>&1)
+
+if [ "$rb_error" == "$rb_error" ]; then
+    echo "RoleBinding error found"
+else
+    echo "RoleBinding error not found"
+    exit 1
+fi

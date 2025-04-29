@@ -41,6 +41,8 @@ import (
 	msacommon "open-cluster-management.io/managed-serviceaccount/pkg/common"
 )
 
+const ocmAgentAddon = "ocm-agent-addon"
+
 var _ = Describe("ClusterPermission controller", func() {
 
 	const (
@@ -70,6 +72,15 @@ var _ = Describe("ClusterPermission controller", func() {
 				},
 			}
 			Expect(k8sClient.Create(ctx, &managedClusterNs)).Should(Succeed())
+
+			By("Creating the ManagedServiceAccount addon")
+			saAddon := addonv1alpha1.ManagedClusterAddOn{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: clusterName,
+					Name:      msacommon.AddonName,
+				},
+			}
+			Expect(k8sClient.Create(ctx, &saAddon)).Should(Succeed())
 
 			By("Creating the ClusterPermission")
 			clusterPermission := cpv1alpha1.ClusterPermission{
@@ -167,15 +178,6 @@ var _ = Describe("ClusterPermission controller", func() {
 				},
 			}
 			Expect(k8sClient.Create(ctx, &managedSA)).Should(Succeed())
-
-			By("Creating the ManagedServiceAccount addon")
-			saAddon := addonv1alpha1.ManagedClusterAddOn{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace: clusterName,
-					Name:      msacommon.AddonName,
-				},
-			}
-			Expect(k8sClient.Create(ctx, &saAddon)).Should(Succeed())
 
 			By("Creating the ClusterPermission with subject ManagedServiceAccount")
 			clusterPermission = cpv1alpha1.ClusterPermission{
@@ -604,11 +606,28 @@ var _ = Describe("ClusterPermission controller", func() {
 					Name:      "sa-sample-existing",
 				},
 			}))).Should(Equal(1))
+
+			By("Create ClusterPermission with ClusterRoleBinding that has no subject or subjects")
+			clusterPermission = cpv1alpha1.ClusterPermission{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "clusterpermission-no-subject-subjects",
+					Namespace: clusterName,
+				},
+				Spec: cpv1alpha1.ClusterPermissionSpec{
+					ClusterRoleBinding: &cpv1alpha1.ClusterRoleBinding{
+						RoleRef: &rbacv1.RoleRef{
+							APIGroup: "rbac.authorization.k8s.io",
+							Kind:     "ClusterRole",
+							Name:     "argocd-application-controller-3",
+						},
+					},
+				},
+			}
 		})
 	})
 })
 
-func TestGenerateSubject(t *testing.T) {
+func TestGenerateSubjects(t *testing.T) {
 	cases := []struct {
 		name             string
 		subject          rbacv1.Subject
@@ -623,6 +642,21 @@ func TestGenerateSubject(t *testing.T) {
 				Kind:      "ServiceAccount",
 				Name:      "test",
 				Namespace: "test",
+			},
+			clusterNamespace: "cluster1",
+			objs: []client.Object{
+				&addonv1alpha1.ManagedClusterAddOn{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      msacommon.AddonName,
+						Namespace: "cluster1",
+					},
+					Spec: addonv1alpha1.ManagedClusterAddOnSpec{
+						InstallNamespace: "test",
+					},
+					Status: addonv1alpha1.ManagedClusterAddOnStatus{
+						Namespace: ocmAgentAddon,
+					},
+				},
 			},
 			expectedSubject: rbacv1.Subject{
 				Kind:      "ServiceAccount",
@@ -648,7 +682,7 @@ func TestGenerateSubject(t *testing.T) {
 						InstallNamespace: "test",
 					},
 					Status: addonv1alpha1.ManagedClusterAddOnStatus{
-						Namespace: "ocm-agent-addon",
+						Namespace: ocmAgentAddon,
 					},
 				},
 			},
@@ -656,7 +690,7 @@ func TestGenerateSubject(t *testing.T) {
 				Kind:      "ServiceAccount",
 				APIGroup:  corev1.GroupName,
 				Name:      "test",
-				Namespace: "ocm-agent-addon",
+				Namespace: ocmAgentAddon,
 			},
 		},
 		{
@@ -674,7 +708,7 @@ func TestGenerateSubject(t *testing.T) {
 						Namespace: "cluster1",
 					},
 					Spec: addonv1alpha1.ManagedClusterAddOnSpec{
-						InstallNamespace: "ocm-agent-addon",
+						InstallNamespace: ocmAgentAddon,
 					},
 				},
 			},
@@ -682,7 +716,7 @@ func TestGenerateSubject(t *testing.T) {
 				Kind:      "ServiceAccount",
 				APIGroup:  corev1.GroupName,
 				Name:      "test",
-				Namespace: "ocm-agent-addon",
+				Namespace: ocmAgentAddon,
 			},
 		},
 	}
@@ -700,13 +734,13 @@ func TestGenerateSubject(t *testing.T) {
 				Scheme: testscheme,
 			}
 
-			subjects, err := cpr.generateSubject(context.TODO(), getSubjects(c.subject, c.subjects), c.clusterNamespace)
+			subjects, err := cpr.generateSubjects(context.TODO(), getSubjects(c.subject, c.subjects), c.clusterNamespace)
 			if err != nil {
-				t.Errorf("generateSubject() error = %v", err)
+				t.Errorf("generateSubjects() error = %v", err)
 			}
 
 			if len(subjects) == 0 {
-				t.Errorf("generateSubject() return zero subjects")
+				t.Errorf("generateSubjects() return zero subjects")
 			}
 
 			if !reflect.DeepEqual(subjects[0], c.expectedSubject) {

@@ -211,30 +211,30 @@ func getSubjects(subject rbacv1.Subject, subjects []rbacv1.Subject) []rbacv1.Sub
 	if len(subjects) > 0 {
 		return subjects
 	} else {
-		// should be safe since one of them has to exist
+		// should be safe since one of them has to exist due to CRD validation
 		return []rbacv1.Subject{subject}
 	}
 }
 
-// generateSubject checks if the subject is a ManagedServiceAccount
-// if it is, then return a subject that represent the ManagedCluster ServiceAccount
-// othwerise, return the same subject as before
-func (r *ClusterPermissionReconciler) generateSubject(ctx context.Context,
+// generateSubjects checks if the subjects in the subjects array is a ManagedServiceAccount
+// if it is, then append the subjects that represent the ManagedCluster ServiceAccount to the array and return the array
+// otherwise, append the same subjects as before and return the array
+func (r *ClusterPermissionReconciler) generateSubjects(ctx context.Context,
 	subjects []rbacv1.Subject, clusterNamespace string) ([]rbacv1.Subject, error) {
 	saSubjects := []rbacv1.Subject{}
 
+	var addon addonv1alpha1.ManagedClusterAddOn
+	if err := r.Get(ctx, types.NamespacedName{Namespace: clusterNamespace, Name: msacommon.AddonName}, &addon); err != nil {
+		return []rbacv1.Subject{}, err
+	}
+
+	ns := addon.Status.Namespace
+	if ns == "" {
+		ns = addon.Spec.InstallNamespace
+	}
+
 	for _, sub := range subjects {
 		if sub.APIGroup == msav1beta1.GroupVersion.Group && sub.Kind == "ManagedServiceAccount" {
-			var addon addonv1alpha1.ManagedClusterAddOn
-			if err := r.Get(ctx, types.NamespacedName{Namespace: clusterNamespace, Name: msacommon.AddonName}, &addon); err != nil {
-				return []rbacv1.Subject{}, err
-			}
-
-			ns := addon.Status.Namespace
-			if ns == "" {
-				ns = addon.Spec.InstallNamespace
-			}
-
 			saSubjects = append(saSubjects, rbacv1.Subject{
 				APIGroup:  corev1.GroupName,
 				Kind:      "ServiceAccount",
@@ -273,15 +273,13 @@ func (r *ClusterPermissionReconciler) generateManifestWorkPayload(ctx context.Co
 
 	// ClusterRoleBinding payload
 	if clusterPermission.Spec.ClusterRoleBinding != nil {
-		if err := r.validateSubject(ctx, getSubjects(
-			clusterPermission.Spec.ClusterRoleBinding.Subject,
-			clusterPermission.Spec.ClusterRoleBinding.Subjects,
-		), clusterPermission.Namespace); err != nil {
+		crbSubjects := getSubjects(clusterPermission.Spec.ClusterRoleBinding.Subject,
+			clusterPermission.Spec.ClusterRoleBinding.Subjects)
+		if err := r.validateSubject(ctx, crbSubjects, clusterPermission.Namespace); err != nil {
 			return nil, nil, nil, nil, err
 		}
 
-		subjects, err := r.generateSubject(ctx, getSubjects(clusterPermission.Spec.ClusterRoleBinding.Subject,
-			clusterPermission.Spec.ClusterRoleBinding.Subjects), clusterPermission.Namespace)
+		subjects, err := r.generateSubjects(ctx, crbSubjects, clusterPermission.Namespace)
 		if err != nil {
 			return nil, nil, nil, nil, err
 		}
@@ -375,6 +373,7 @@ func (r *ClusterPermissionReconciler) generateManifestWorkPayload(ctx context.Co
 	// RoleBindings payload
 	if clusterPermission.Spec.RoleBindings != nil && len(*clusterPermission.Spec.RoleBindings) > 0 {
 		for _, roleBinding := range *clusterPermission.Spec.RoleBindings {
+			rbSubjects := getSubjects(roleBinding.Subject, roleBinding.Subjects)
 			if roleBinding.Namespace == "" && roleBinding.NamespaceSelector == nil {
 				return nil, nil, nil, nil,
 					errors.New("both RoleBinding Namespace and NamespaceSelector cannot be nil and empty")
@@ -400,13 +399,11 @@ func (r *ClusterPermissionReconciler) generateManifestWorkPayload(ctx context.Co
 				}
 
 				for _, ns := range nsList.Items {
-					if err := r.validateSubject(ctx, getSubjects(roleBinding.Subject, roleBinding.Subjects),
-						clusterPermission.Namespace); err != nil {
+					if err := r.validateSubject(ctx, rbSubjects, clusterPermission.Namespace); err != nil {
 						return nil, nil, nil, nil, err
 					}
 
-					subjects, err := r.generateSubject(ctx, getSubjects(roleBinding.Subject, roleBinding.Subjects),
-						clusterPermission.Namespace)
+					subjects, err := r.generateSubjects(ctx, rbSubjects, clusterPermission.Namespace)
 					if err != nil {
 						return nil, nil, nil, nil, err
 					}
@@ -429,13 +426,11 @@ func (r *ClusterPermissionReconciler) generateManifestWorkPayload(ctx context.Co
 					})
 				}
 			} else if roleBinding.Namespace != "" {
-				if err := r.validateSubject(ctx, getSubjects(roleBinding.Subject, roleBinding.Subjects),
-					clusterPermission.Namespace); err != nil {
+				if err := r.validateSubject(ctx, rbSubjects, clusterPermission.Namespace); err != nil {
 					return nil, nil, nil, nil, err
 				}
 
-				subjects, err := r.generateSubject(ctx, getSubjects(roleBinding.Subject, roleBinding.Subjects),
-					clusterPermission.Namespace)
+				subjects, err := r.generateSubjects(ctx, rbSubjects, clusterPermission.Namespace)
 				if err != nil {
 					return nil, nil, nil, nil, err
 				}
