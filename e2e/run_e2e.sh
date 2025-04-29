@@ -55,7 +55,7 @@ fi
 echo "TEST ClusterPermission with existing roles"
 kubectl config use-context kind-hub
 kubectl apply -f config/samples/clusterpermission_existing_roles.yaml -n cluster1
-sleep 10
+sleep 30
 work_kubectl_command=$(kubectl -n cluster1 get clusterpermission clusterpermission-existing-role-sample -o yaml | grep kubectl | grep ManifestWork)
 if $work_kubectl_command; then
     echo "ManifestWork found"
@@ -74,7 +74,7 @@ fi
 echo "TEST ClusterPermission with users and groups"
 kubectl config use-context kind-hub
 kubectl apply -f config/samples/clusterpermission_users_groups.yaml -n cluster1
-sleep 10
+sleep 30
 work_kubectl_command=$(kubectl -n cluster1 get clusterpermission clusterpermission-users-groups -o yaml | grep kubectl | grep ManifestWork)
 if $work_kubectl_command; then
     echo "ManifestWork found"
