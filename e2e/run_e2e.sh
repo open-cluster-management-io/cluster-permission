@@ -18,7 +18,7 @@ fi
 echo "TEST ClusterPermission"
 kubectl config use-context kind-hub
 kubectl apply -f config/samples/rbac.open-cluster-management.io_v1alpha1_clusterpermission.yaml -n cluster1
-sleep 10
+sleep 30
 work_kubectl_command=$(kubectl -n cluster1 get clusterpermission -o yaml | grep kubectl | grep ManifestWork)
 if $work_kubectl_command; then
     echo "ManifestWork found"
