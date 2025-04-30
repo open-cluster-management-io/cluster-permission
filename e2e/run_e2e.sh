@@ -27,6 +27,24 @@ else
     exit 1
 fi
 
+echo
+echo
+echo "==========ClusterPermission=========="
+kubectl -n cluster1 get clusterpermission -o yaml
+echo
+echo
+echo
+echo "==========ManifestWork=========="
+kubectl -n cluster1 get manifestwork -o yaml
+echo
+echo
+echo
+echo "==========Logging=========="
+kubectl logs -n open-cluster-management -l name=cluster-permission
+echo
+echo
+echo
+
 if kubectl -n default get role clusterpermission-sample; then
     echo "clusterpermission-sample role found"
 else

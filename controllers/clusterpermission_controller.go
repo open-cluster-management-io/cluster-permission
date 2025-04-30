@@ -120,7 +120,7 @@ func (r *ClusterPermissionReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	clusterRole, clusterRoleBinding, roles, roleBindings, err := r.generateManifestWorkPayload(
 		ctx, &clusterPermission)
 	if err != nil {
-		log.Info("failed to generate payload")
+		log.Error(err, "failed to generate payload")
 
 		errStatus := r.updateStatus(ctx, &clusterPermission, &metav1.Condition{
 			Type:    cpv1alpha1.ConditionTypeAppliedRBACManifestWork,
