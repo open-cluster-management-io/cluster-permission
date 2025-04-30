@@ -108,14 +108,14 @@ else
     exit 1
 fi
 
-if kubectl -n kube-system get rolebinding kubevirt-rb-cluster1-users1 -o yaml | grep users1: then
+if kubectl -n kube-system get rolebinding kubevirt-rb-cluster1-users1 -o yaml | grep users1; then
     echo "kubevirt-rb-cluster1-users1 users1 found"
 else
     echo "kubevirt-rb-cluster1-users1 users1 not found"
     exit 1
 fi
 
-if kubectl -n kube-system get rolebinding kubevirt-rb-cluster1-users1 -o yaml | grep users2: then
+if kubectl -n kube-system get rolebinding kubevirt-rb-cluster1-users1 -o yaml | grep users2; then
     echo "kubevirt-rb-cluster1-users1 users2 found"
 else
     echo "kubevirt-rb-cluster1-users1 users2 not found"
