@@ -223,22 +223,26 @@ func (r *ClusterPermissionReconciler) generateSubjects(ctx context.Context,
 	subjects []rbacv1.Subject, clusterNamespace string) ([]rbacv1.Subject, error) {
 	saSubjects := []rbacv1.Subject{}
 
-	var addon addonv1alpha1.ManagedClusterAddOn
-	if err := r.Get(ctx, types.NamespacedName{Namespace: clusterNamespace, Name: msacommon.AddonName}, &addon); err != nil {
-		return []rbacv1.Subject{}, err
-	}
-
-	ns := addon.Status.Namespace
-	if ns == "" {
-		ns = addon.Spec.InstallNamespace
-	}
+	addonNs := ""
 
 	for _, sub := range subjects {
 		if sub.APIGroup == msav1beta1.GroupVersion.Group && sub.Kind == "ManagedServiceAccount" {
+			if addonNs == "" {
+				var addon addonv1alpha1.ManagedClusterAddOn
+				if err := r.Get(ctx, types.NamespacedName{Namespace: clusterNamespace, Name: msacommon.AddonName}, &addon); err != nil {
+					return []rbacv1.Subject{}, err
+				}
+
+				addonNs = addon.Status.Namespace
+				if addonNs == "" {
+					addonNs = addon.Spec.InstallNamespace
+				}
+			}
+
 			saSubjects = append(saSubjects, rbacv1.Subject{
 				APIGroup:  corev1.GroupName,
 				Kind:      "ServiceAccount",
-				Namespace: ns,
+				Namespace: addonNs,
 				Name:      sub.Name,
 			})
 		} else {
