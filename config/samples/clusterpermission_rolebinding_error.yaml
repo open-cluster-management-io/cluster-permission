@@ -1,0 +1,12 @@
+# This sample is for testing only, does not work
+apiVersion: rbac.open-cluster-management.io/v1alpha1
+kind: ClusterPermission
+metadata:
+  name: clusterpermission-rolebinding-error
+spec:
+  roleBindings:
+    - namespace: default
+      roleRef:
+        apiGroup: rbac.authorization.k8s.io
+        kind: ClusterRole
+        name: argocd-application-controller-users-1
