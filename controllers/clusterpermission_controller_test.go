@@ -24,14 +24,14 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	addonv1alpha1 "open-cluster-management.io/api/addon/v1alpha1"
 	clusterv1 "open-cluster-management.io/api/cluster/v1"
@@ -40,6 +40,8 @@ import (
 	msav1beta1 "open-cluster-management.io/managed-serviceaccount/apis/authentication/v1beta1"
 	msacommon "open-cluster-management.io/managed-serviceaccount/pkg/common"
 )
+
+const ocmAgentAddon = "ocm-agent-addon"
 
 var _ = Describe("ClusterPermission controller", func() {
 
@@ -71,6 +73,15 @@ var _ = Describe("ClusterPermission controller", func() {
 			}
 			Expect(k8sClient.Create(ctx, &managedClusterNs)).Should(Succeed())
 
+			By("Creating the ManagedServiceAccount addon")
+			saAddon := addonv1alpha1.ManagedClusterAddOn{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: clusterName,
+					Name:      msacommon.AddonName,
+				},
+			}
+			Expect(k8sClient.Create(ctx, &saAddon)).Should(Succeed())
+
 			By("Creating the ClusterPermission")
 			clusterPermission := cpv1alpha1.ClusterPermission{
 				ObjectMeta: metav1.ObjectMeta{
@@ -94,6 +105,7 @@ var _ = Describe("ClusterPermission controller", func() {
 						}},
 					}},
 					ClusterRoleBinding: &cpv1alpha1.ClusterRoleBinding{
+						Subjects: []rbacv1.Subject{},
 						Subject: rbacv1.Subject{
 							Kind:      "ServiceAccount",
 							Name:      "klusterlet-work-sa",
@@ -104,6 +116,7 @@ var _ = Describe("ClusterPermission controller", func() {
 						{
 							Namespace: "default",
 							RoleRef:   cpv1alpha1.RoleRef{Kind: "ClusterRole"},
+							Subjects:  []rbacv1.Subject{},
 							Subject: rbacv1.Subject{
 								Kind:      "ServiceAccount",
 								Name:      "klusterlet-work-sa",
@@ -166,15 +179,6 @@ var _ = Describe("ClusterPermission controller", func() {
 			}
 			Expect(k8sClient.Create(ctx, &managedSA)).Should(Succeed())
 
-			By("Creating the ManagedServiceAccount addon")
-			saAddon := addonv1alpha1.ManagedClusterAddOn{
-				ObjectMeta: metav1.ObjectMeta{
-					Namespace: clusterName,
-					Name:      msacommon.AddonName,
-				},
-			}
-			Expect(k8sClient.Create(ctx, &saAddon)).Should(Succeed())
-
 			By("Creating the ClusterPermission with subject ManagedServiceAccount")
 			clusterPermission = cpv1alpha1.ClusterPermission{
 				ObjectMeta: metav1.ObjectMeta{
@@ -198,6 +202,7 @@ var _ = Describe("ClusterPermission controller", func() {
 						}},
 					}},
 					ClusterRoleBinding: &cpv1alpha1.ClusterRoleBinding{
+						Subjects: []rbacv1.Subject{},
 						Subject: rbacv1.Subject{
 							APIGroup: "authentication.open-cluster-management.io",
 							Kind:     "ManagedServiceAccount",
@@ -208,6 +213,7 @@ var _ = Describe("ClusterPermission controller", func() {
 						{
 							Namespace: "default",
 							RoleRef:   cpv1alpha1.RoleRef{Kind: "ClusterRole"},
+							Subjects:  []rbacv1.Subject{},
 							Subject: rbacv1.Subject{
 								APIGroup: "authentication.open-cluster-management.io",
 								Kind:     "ManagedServiceAccount",
@@ -254,6 +260,7 @@ var _ = Describe("ClusterPermission controller", func() {
 						{
 							NamespaceSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"a": "b"}},
 							RoleRef:           cpv1alpha1.RoleRef{Kind: "ClusterRole"},
+							Subjects:          []rbacv1.Subject{},
 							Subject: rbacv1.Subject{
 								APIGroup: "authentication.open-cluster-management.io",
 								Kind:     "ManagedServiceAccount",
@@ -301,6 +308,7 @@ var _ = Describe("ClusterPermission controller", func() {
 								Kind:     "ClusterRole",
 								Name:     "argocd-application-controller-1",
 							},
+							Subjects: []rbacv1.Subject{},
 							Subject: rbacv1.Subject{
 								Namespace: "openshift-gitops",
 								Kind:      "ServiceAccount",
@@ -315,6 +323,7 @@ var _ = Describe("ClusterPermission controller", func() {
 								Kind:     "Role",
 								Name:     "argocd-application-controller-2",
 							},
+							Subjects: []rbacv1.Subject{},
 							Subject: rbacv1.Subject{
 								APIGroup: "rbac.authorization.k8s.io",
 								Kind:     "User",
@@ -328,6 +337,7 @@ var _ = Describe("ClusterPermission controller", func() {
 								Kind:     "Role",
 								Name:     "argocd-application-controller-2",
 							},
+							Subjects: []rbacv1.Subject{},
 							Subject: rbacv1.Subject{
 								APIGroup: "rbac.authorization.k8s.io",
 								Kind:     "User",
@@ -342,6 +352,7 @@ var _ = Describe("ClusterPermission controller", func() {
 							Kind:     "ClusterRole",
 							Name:     "argocd-application-controller-3",
 						},
+						Subjects: []rbacv1.Subject{},
 						Subject: rbacv1.Subject{
 							APIGroup: "rbac.authorization.k8s.io",
 							Kind:     "Group",
@@ -412,6 +423,7 @@ var _ = Describe("ClusterPermission controller", func() {
 						}},
 					},
 					ClusterRoleBinding: &cpv1alpha1.ClusterRoleBinding{
+						Subjects: []rbacv1.Subject{},
 						Subject: rbacv1.Subject{
 							APIGroup: "authentication.open-cluster-management.io",
 							Kind:     "ManagedServiceAccount",
@@ -459,6 +471,7 @@ var _ = Describe("ClusterPermission controller", func() {
 					},
 					RoleBindings: &[]cpv1alpha1.RoleBinding{
 						{
+							Subjects: []rbacv1.Subject{},
 							Subject: rbacv1.Subject{
 								APIGroup: "authentication.open-cluster-management.io",
 								Kind:     "ManagedServiceAccount",
@@ -544,6 +557,7 @@ var _ = Describe("ClusterPermission controller", func() {
 								Kind: "ClusterRole",
 								Name: "argocd-application-controller-1",
 							},
+							Subjects: []rbacv1.Subject{},
 							Subject: rbacv1.Subject{
 								Namespace: "openshift-gitops",
 								Kind:      "ServiceAccount",
@@ -571,6 +585,7 @@ var _ = Describe("ClusterPermission controller", func() {
 								APIGroup: "rbac.authorization.k8s.io",
 								Kind:     "ClusterRole",
 							},
+							Subjects: []rbacv1.Subject{},
 							Subject: rbacv1.Subject{
 								Namespace: "openshift-gitops",
 								Kind:      "ServiceAccount",
@@ -582,14 +597,41 @@ var _ = Describe("ClusterPermission controller", func() {
 			}
 
 			Expect(k8sClient.Create(ctx, &clusterPermissionMissingName)).Should(Succeed())
+
+			By("Test getSubjects()")
+			Expect(len(getSubjects(rbacv1.Subject{}, []rbacv1.Subject{
+				{
+					Namespace: "openshift-gitops",
+					Kind:      "ServiceAccount",
+					Name:      "sa-sample-existing",
+				},
+			}))).Should(Equal(1))
+
+			By("Create ClusterPermission with ClusterRoleBinding that has no subject or subjects")
+			clusterPermission = cpv1alpha1.ClusterPermission{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "clusterpermission-no-subject-subjects",
+					Namespace: clusterName,
+				},
+				Spec: cpv1alpha1.ClusterPermissionSpec{
+					ClusterRoleBinding: &cpv1alpha1.ClusterRoleBinding{
+						RoleRef: &rbacv1.RoleRef{
+							APIGroup: "rbac.authorization.k8s.io",
+							Kind:     "ClusterRole",
+							Name:     "argocd-application-controller-3",
+						},
+					},
+				},
+			}
 		})
 	})
 })
 
-func TestGenerateSubject(t *testing.T) {
+func TestGenerateSubjects(t *testing.T) {
 	cases := []struct {
 		name             string
 		subject          rbacv1.Subject
+		subjects         []rbacv1.Subject
 		clusterNamespace string
 		objs             []client.Object
 		expectedSubject  rbacv1.Subject
@@ -600,6 +642,21 @@ func TestGenerateSubject(t *testing.T) {
 				Kind:      "ServiceAccount",
 				Name:      "test",
 				Namespace: "test",
+			},
+			clusterNamespace: "cluster1",
+			objs: []client.Object{
+				&addonv1alpha1.ManagedClusterAddOn{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      msacommon.AddonName,
+						Namespace: "cluster1",
+					},
+					Spec: addonv1alpha1.ManagedClusterAddOnSpec{
+						InstallNamespace: "test",
+					},
+					Status: addonv1alpha1.ManagedClusterAddOnStatus{
+						Namespace: ocmAgentAddon,
+					},
+				},
 			},
 			expectedSubject: rbacv1.Subject{
 				Kind:      "ServiceAccount",
@@ -625,7 +682,7 @@ func TestGenerateSubject(t *testing.T) {
 						InstallNamespace: "test",
 					},
 					Status: addonv1alpha1.ManagedClusterAddOnStatus{
-						Namespace: "ocm-agent-addon",
+						Namespace: ocmAgentAddon,
 					},
 				},
 			},
@@ -633,7 +690,7 @@ func TestGenerateSubject(t *testing.T) {
 				Kind:      "ServiceAccount",
 				APIGroup:  corev1.GroupName,
 				Name:      "test",
-				Namespace: "ocm-agent-addon",
+				Namespace: ocmAgentAddon,
 			},
 		},
 		{
@@ -651,7 +708,7 @@ func TestGenerateSubject(t *testing.T) {
 						Namespace: "cluster1",
 					},
 					Spec: addonv1alpha1.ManagedClusterAddOnSpec{
-						InstallNamespace: "ocm-agent-addon",
+						InstallNamespace: ocmAgentAddon,
 					},
 				},
 			},
@@ -659,7 +716,7 @@ func TestGenerateSubject(t *testing.T) {
 				Kind:      "ServiceAccount",
 				APIGroup:  corev1.GroupName,
 				Name:      "test",
-				Namespace: "ocm-agent-addon",
+				Namespace: ocmAgentAddon,
 			},
 		},
 	}
@@ -677,13 +734,17 @@ func TestGenerateSubject(t *testing.T) {
 				Scheme: testscheme,
 			}
 
-			subject, err := cpr.generateSubject(context.TODO(), c.subject, c.clusterNamespace)
+			subjects, err := cpr.generateSubjects(context.TODO(), getSubjects(c.subject, c.subjects), c.clusterNamespace)
 			if err != nil {
-				t.Errorf("generateSubject() error = %v", err)
+				t.Errorf("generateSubjects() error = %v", err)
 			}
 
-			if !reflect.DeepEqual(subject, c.expectedSubject) {
-				t.Errorf("expected subject %v, got %v", c.expectedSubject, subject)
+			if len(subjects) == 0 {
+				t.Errorf("generateSubjects() return zero subjects")
+			}
+
+			if !reflect.DeepEqual(subjects[0], c.expectedSubject) {
+				t.Errorf("expected subject %v, got %v", c.expectedSubject, subjects[0])
 			}
 		})
 	}
