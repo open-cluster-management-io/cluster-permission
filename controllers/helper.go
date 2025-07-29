@@ -33,7 +33,7 @@ func generateManifestWorkName(clusterPermission cpv1alpha1.ClusterPermission) st
 // buildManifestWork wraps the payloads in a ManifestWork
 func buildManifestWork(clusterPermission cpv1alpha1.ClusterPermission, manifestWorkName string,
 	clusterRole *rbacv1.ClusterRole,
-	clusterRoleBinding *rbacv1.ClusterRoleBinding,
+	clusterRoleBindings []rbacv1.ClusterRoleBinding,
 	roles []rbacv1.Role,
 	roleBindings []rbacv1.RoleBinding) *workv1.ManifestWork {
 	var manifests []workv1.Manifest
@@ -42,8 +42,10 @@ func buildManifestWork(clusterPermission cpv1alpha1.ClusterPermission, manifestW
 		manifests = append(manifests, workv1.Manifest{RawExtension: runtime.RawExtension{Object: clusterRole}})
 	}
 
-	if clusterRoleBinding != nil {
-		manifests = append(manifests, workv1.Manifest{RawExtension: runtime.RawExtension{Object: clusterRoleBinding}})
+	if len(clusterRoleBindings) > 0 {
+		for i := range clusterRoleBindings {
+			manifests = append(manifests, workv1.Manifest{RawExtension: runtime.RawExtension{Object: &clusterRoleBindings[i]}})
+		}
 	}
 
 	if len(roles) > 0 {
