@@ -387,6 +387,7 @@ var _ = Describe("ClusterPermission controller", func() {
 								Kind:     "ClusterRole",
 								Name:     "argocd-application-controller-1",
 							},
+							Subjects: []rbacv1.Subject{},
 							Subject: rbacv1.Subject{
 								Kind: "User",
 								Name: "user1",
