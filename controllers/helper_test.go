@@ -128,7 +128,7 @@ func Test_buildManifestWork(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := buildManifestWork(tt.args.clusterPermission, tt.args.manifestWorkName, tt.args.clusterRole, tt.args.clusterRoleBinding,
+			got := buildManifestWork(tt.args.clusterPermission, tt.args.manifestWorkName, tt.args.clusterRole, []rbacv1.ClusterRoleBinding{*tt.args.clusterRoleBinding},
 				tt.args.roles, tt.args.roleBindings)
 			// check work name
 			if got.Name != tt.wants.manifestWorkName {

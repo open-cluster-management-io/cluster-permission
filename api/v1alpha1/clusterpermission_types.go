@@ -37,6 +37,11 @@ type ClusterPermissionSpec struct {
 	// +kubebuilder:validation:XValidation:rule="has(self.subject) || has(self.subjects)",message="Either subject or subjects has to exist in clusterRoleBinding"
 	ClusterRoleBinding *ClusterRoleBinding `json:"clusterRoleBinding,omitempty"`
 
+	// ClusterRoleBindings represents multiple ClusterRoleBindings that are being created on the managed cluster
+	// +optional
+	// +kubebuilder:validation:XValidation:rule="self.all(i, has(i.subject) || has(i.subjects))",message="Either subject or subjects has to exist in every clusterRoleBinding"
+	ClusterRoleBindings *[]ClusterRoleBinding `json:"clusterRoleBindings,omitempty"`
+
 	// Roles represents roles that are being created on the managed cluster
 	// +optional
 	Roles *[]Role `json:"roles,omitempty"`

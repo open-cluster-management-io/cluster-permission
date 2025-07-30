@@ -371,6 +371,59 @@ var _ = Describe("ClusterPermission controller", func() {
 				}
 				return true
 			}).Should(BeTrue())
+
+			By("Creating a ClusterPermission that has multiple ClusterRoleBindings")
+			clusterPermissionMultipleCRBs := cpv1alpha1.ClusterPermission{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "clusterpermission-multiple-crbs",
+					Namespace: clusterName,
+				},
+				Spec: cpv1alpha1.ClusterPermissionSpec{
+					ClusterRoleBindings: &[]cpv1alpha1.ClusterRoleBinding{
+						{
+							Name: "crb-1",
+							RoleRef: &rbacv1.RoleRef{
+								APIGroup: "rbac.authorization.k8s.io",
+								Kind:     "ClusterRole",
+								Name:     "argocd-application-controller-1",
+							},
+							Subjects: []rbacv1.Subject{},
+							Subject: rbacv1.Subject{
+								Kind: "User",
+								Name: "user1",
+							},
+						},
+						{
+							Name: "crb-2",
+							RoleRef: &rbacv1.RoleRef{
+								APIGroup: "rbac.authorization.k8s.io",
+								Kind:     "ClusterRole",
+								Name:     "argocd-application-controller-2",
+							},
+							Subjects: []rbacv1.Subject{
+								{
+									Kind: "User",
+									Name: "user2",
+								},
+								{
+									Kind: "Group",
+									Name: "group1",
+								},
+							},
+						},
+					},
+				},
+			}
+
+			Expect(k8sClient.Create(ctx, &clusterPermissionMultipleCRBs)).Should(Succeed())
+			mwKeyMultipleCRBs := types.NamespacedName{Name: generateManifestWorkName(clusterPermissionMultipleCRBs), Namespace: clusterName}
+			mwMultipleCRBs := workv1.ManifestWork{}
+			Eventually(func() bool {
+				if err := k8sClient.Get(ctx, mwKeyMultipleCRBs, &mwMultipleCRBs); err != nil {
+					return false
+				}
+				return true
+			}).Should(BeTrue())
 		})
 	})
 

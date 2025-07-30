@@ -98,6 +98,17 @@ func (in *ClusterPermissionSpec) DeepCopyInto(out *ClusterPermissionSpec) {
 		*out = new(ClusterRoleBinding)
 		(*in).DeepCopyInto(*out)
 	}
+	if in.ClusterRoleBindings != nil {
+		in, out := &in.ClusterRoleBindings, &out.ClusterRoleBindings
+		*out = new([]ClusterRoleBinding)
+		if **in != nil {
+			in, out := *in, *out
+			*out = make([]ClusterRoleBinding, len(*in))
+			for i := range *in {
+				(*in)[i].DeepCopyInto(&(*out)[i])
+			}
+		}
+	}
 	if in.Roles != nil {
 		in, out := &in.Roles, &out.Roles
 		*out = new([]Role)

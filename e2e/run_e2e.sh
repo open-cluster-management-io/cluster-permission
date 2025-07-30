@@ -147,3 +147,28 @@ else
     echo "RoleBinding error not found"
     exit 1
 fi
+
+echo "TEST ClusterPermission with multiple clusterRoleBindings"
+kubectl apply -f config/samples/clusterpermission_multiple_clusterrolebindings.yaml -n cluster1
+sleep 30
+work_kubectl_command=$(kubectl -n cluster1 get clusterpermission clusterpermission-multiple-clusterrolebindings -o yaml | grep kubectl | grep ManifestWork)
+if $work_kubectl_command; then
+    echo "ManifestWork found"
+else
+    echo "ManifestWork not found"
+    exit 1
+fi
+
+if kubectl get clusterrolebinding multi-crb-binding1 -o yaml | grep user1; then
+    echo "multi-crb-binding1 user1 found"
+else
+    echo "multi-crb-binding1 user1 not found"
+    exit 1
+fi
+
+if kubectl get clusterrolebinding multi-crb-binding2 -o yaml | grep user2; then
+    echo "multi-crb-binding2 user2 found"
+else
+    echo "multi-crb-binding2 user2 not found"
+    exit 1
+fi

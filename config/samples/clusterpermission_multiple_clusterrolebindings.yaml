@@ -1,0 +1,24 @@
+apiVersion: rbac.open-cluster-management.io/v1alpha1
+kind: ClusterPermission
+metadata:
+  name: clusterpermission-multiple-clusterrolebindings
+spec:
+  clusterRoleBindings:
+    - name: multi-crb-binding1
+      roleRef:
+        apiGroup: rbac.authorization.k8s.io
+        kind: ClusterRole
+        name: argocd-application-controller-1
+      subject:
+        kind: User
+        name: user1
+    - name: multi-crb-binding2
+      roleRef:
+        apiGroup: rbac.authorization.k8s.io
+        kind: ClusterRole
+        name: argocd-application-controller-3
+      subjects:
+        - kind: User
+          name: user2
+        - kind: Group
+          name: group1

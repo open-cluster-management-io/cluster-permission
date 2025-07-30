@@ -82,7 +82,9 @@ func (r *ClusterPermissionReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	log.Info("validating ClusterPermission")
 
 	/* Validations */
-	if clusterPermission.Spec.ClusterRoleBinding == nil && clusterPermission.Spec.RoleBindings == nil {
+	if clusterPermission.Spec.ClusterRoleBinding == nil &&
+		(clusterPermission.Spec.ClusterRoleBindings == nil || len(*clusterPermission.Spec.ClusterRoleBindings) == 0) &&
+		(clusterPermission.Spec.RoleBindings == nil || len(*clusterPermission.Spec.RoleBindings) == 0) {
 		log.Info("no bindings defined for ClusterPermission")
 
 		err := r.updateStatus(ctx, &clusterPermission, &metav1.Condition{
@@ -117,7 +119,7 @@ func (r *ClusterPermissionReconciler) Reconcile(ctx context.Context, req ctrl.Re
 
 	log.Info("preparing ManifestWork payload")
 
-	clusterRole, clusterRoleBinding, roles, roleBindings, err := r.generateManifestWorkPayload(
+	clusterRole, clusterRoleBindings, roles, roleBindings, err := r.generateManifestWorkPayload(
 		ctx, &clusterPermission)
 	if err != nil {
 		log.Error(err, "failed to generate payload")
@@ -134,7 +136,7 @@ func (r *ClusterPermissionReconciler) Reconcile(ctx context.Context, req ctrl.Re
 
 	mwName := generateManifestWorkName(clusterPermission)
 	manifestWork := buildManifestWork(clusterPermission, mwName,
-		clusterRole, clusterRoleBinding, roles, roleBindings)
+		clusterRole, clusterRoleBindings, roles, roleBindings)
 
 	var mw workv1.ManifestWork
 	err = r.Get(ctx, types.NamespacedName{Name: mwName, Namespace: clusterPermission.Namespace}, &mw)
@@ -255,9 +257,9 @@ func (r *ClusterPermissionReconciler) generateSubjects(ctx context.Context,
 
 // generateManifestWorkPayload creates the payload for the ManifestWork based on the ClusterPermission spec
 func (r *ClusterPermissionReconciler) generateManifestWorkPayload(ctx context.Context, clusterPermission *cpv1alpha1.ClusterPermission) (
-	*rbacv1.ClusterRole, *rbacv1.ClusterRoleBinding, []rbacv1.Role, []rbacv1.RoleBinding, error) {
+	*rbacv1.ClusterRole, []rbacv1.ClusterRoleBinding, []rbacv1.Role, []rbacv1.RoleBinding, error) {
 	var clusterRole *rbacv1.ClusterRole
-	var clusterRoleBinding *rbacv1.ClusterRoleBinding
+	var clusterRoleBindings []rbacv1.ClusterRoleBinding
 	var roles []rbacv1.Role
 	var roleBindings []rbacv1.RoleBinding
 
@@ -275,8 +277,9 @@ func (r *ClusterPermissionReconciler) generateManifestWorkPayload(ctx context.Co
 		}
 	}
 
-	// ClusterRoleBinding payload
-	if clusterPermission.Spec.ClusterRoleBinding != nil {
+	// Only process ClusterRoleBinding if ClusterRoleBindings is nil or empty
+	if (clusterPermission.Spec.ClusterRoleBindings == nil || len(*clusterPermission.Spec.ClusterRoleBindings) == 0) &&
+		clusterPermission.Spec.ClusterRoleBinding != nil {
 		crbSubjects := getSubjects(clusterPermission.Spec.ClusterRoleBinding.Subject,
 			clusterPermission.Spec.ClusterRoleBinding.Subjects)
 		if err := r.validateSubject(ctx, crbSubjects, clusterPermission.Namespace); err != nil {
@@ -304,7 +307,7 @@ func (r *ClusterPermissionReconciler) generateManifestWorkPayload(ctx context.Co
 			clusterRoleBindingRoleRef = *clusterPermission.Spec.ClusterRoleBinding.RoleRef
 		}
 
-		clusterRoleBinding = &rbacv1.ClusterRoleBinding{
+		clusterRoleBindings = append(clusterRoleBindings, rbacv1.ClusterRoleBinding{
 			TypeMeta: metav1.TypeMeta{
 				APIVersion: rbacv1.SchemeGroupVersion.String(),
 				Kind:       "ClusterRoleBinding",
@@ -314,6 +317,49 @@ func (r *ClusterPermissionReconciler) generateManifestWorkPayload(ctx context.Co
 			},
 			RoleRef:  clusterRoleBindingRoleRef,
 			Subjects: subjects,
+		})
+	}
+
+	// ClusterRoleBindings payload (plural)
+	if clusterPermission.Spec.ClusterRoleBindings != nil && len(*clusterPermission.Spec.ClusterRoleBindings) > 0 {
+		for _, clusterRoleBinding := range *clusterPermission.Spec.ClusterRoleBindings {
+			crbSubjects := getSubjects(clusterRoleBinding.Subject, clusterRoleBinding.Subjects)
+			if err := r.validateSubject(ctx, crbSubjects, clusterPermission.Namespace); err != nil {
+				return nil, nil, nil, nil, err
+			}
+
+			subjects, err := r.generateSubjects(ctx, crbSubjects, clusterPermission.Namespace)
+			if err != nil {
+				return nil, nil, nil, nil, err
+			}
+
+			// default to ClusterPermission name unless using custom name
+			clusterRoleBindingName := clusterPermission.Name
+			if clusterRoleBinding.Name != "" {
+				clusterRoleBindingName = clusterRoleBinding.Name
+			}
+
+			// default to creating a ClusterRole unless using existing ClusterRole
+			clusterRoleBindingRoleRef := rbacv1.RoleRef{
+				APIGroup: rbacv1.GroupName,
+				Kind:     "ClusterRole",
+				Name:     clusterPermission.Name,
+			}
+			if clusterRoleBinding.RoleRef != nil {
+				clusterRoleBindingRoleRef = *clusterRoleBinding.RoleRef
+			}
+
+			clusterRoleBindings = append(clusterRoleBindings, rbacv1.ClusterRoleBinding{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: rbacv1.SchemeGroupVersion.String(),
+					Kind:       "ClusterRoleBinding",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name: clusterRoleBindingName,
+				},
+				RoleRef:  clusterRoleBindingRoleRef,
+				Subjects: subjects,
+			})
 		}
 	}
 
@@ -479,5 +525,5 @@ func (r *ClusterPermissionReconciler) generateManifestWorkPayload(ctx context.Co
 		}
 	}
 
-	return clusterRole, clusterRoleBinding, roles, roleBindings, nil
+	return clusterRole, clusterRoleBindings, roles, roleBindings, nil
 }
