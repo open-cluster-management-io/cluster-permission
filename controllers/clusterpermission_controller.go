@@ -277,8 +277,9 @@ func (r *ClusterPermissionReconciler) generateManifestWorkPayload(ctx context.Co
 		}
 	}
 
-	// ClusterRoleBinding payload
-	if clusterPermission.Spec.ClusterRoleBinding != nil {
+	// Only process ClusterRoleBinding if ClusterRoleBindings is nil or empty
+	if (clusterPermission.Spec.ClusterRoleBindings == nil || len(*clusterPermission.Spec.ClusterRoleBindings) == 0) &&
+		clusterPermission.Spec.ClusterRoleBinding != nil {
 		crbSubjects := getSubjects(clusterPermission.Spec.ClusterRoleBinding.Subject,
 			clusterPermission.Spec.ClusterRoleBinding.Subjects)
 		if err := r.validateSubject(ctx, crbSubjects, clusterPermission.Namespace); err != nil {
@@ -306,21 +307,17 @@ func (r *ClusterPermissionReconciler) generateManifestWorkPayload(ctx context.Co
 			clusterRoleBindingRoleRef = *clusterPermission.Spec.ClusterRoleBinding.RoleRef
 		}
 
-		// We make the behaviour consistent with how subject and subjects are handled in ClusterRoleBinding
-		// subjects will just override subject if both are provided
-		if clusterPermission.Spec.ClusterRoleBindings == nil || len(*clusterPermission.Spec.ClusterRoleBindings) == 0 {
-			clusterRoleBindings = append(clusterRoleBindings, rbacv1.ClusterRoleBinding{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: rbacv1.SchemeGroupVersion.String(),
-					Kind:       "ClusterRoleBinding",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name: clusterRoleBindingName,
-				},
-				RoleRef:  clusterRoleBindingRoleRef,
-				Subjects: subjects,
-			})
-		}
+		clusterRoleBindings = append(clusterRoleBindings, rbacv1.ClusterRoleBinding{
+			TypeMeta: metav1.TypeMeta{
+				APIVersion: rbacv1.SchemeGroupVersion.String(),
+				Kind:       "ClusterRoleBinding",
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name: clusterRoleBindingName,
+			},
+			RoleRef:  clusterRoleBindingRoleRef,
+			Subjects: subjects,
+		})
 	}
 
 	// ClusterRoleBindings payload (plural)
