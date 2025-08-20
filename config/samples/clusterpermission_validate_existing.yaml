@@ -1,7 +1,7 @@
 apiVersion: rbac.open-cluster-management.io/v1alpha1
 kind: ClusterPermission
 metadata:
-  name: clusterpermission-validate-role-clusterrole
+  name: clusterpermission-validate-existing
 spec:
   validate: true
   roleBindings:
@@ -10,7 +10,7 @@ spec:
       roleRef:
         apiGroup: rbac.authorization.k8s.io
         kind: ClusterRole
-        name: argocd-application-controller-1
+        name: edit
       subject:
         namespace: openshift-gitops
         kind: ServiceAccount
@@ -20,7 +20,7 @@ spec:
       roleRef:
         apiGroup: rbac.authorization.k8s.io
         kind: ClusterRole
-        name: argocd-application-controller-3
+        name: view
       subject:
         apiGroup: rbac.authorization.k8s.io
         kind: Group
