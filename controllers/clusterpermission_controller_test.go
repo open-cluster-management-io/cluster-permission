@@ -673,6 +673,7 @@ var _ = Describe("ClusterPermission controller", func() {
 							Kind:     "ClusterRole",
 							Name:     "argocd-application-controller-3",
 						},
+						Subjects: []rbacv1.Subject{},
 					},
 				},
 			}
