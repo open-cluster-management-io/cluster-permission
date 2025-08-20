@@ -19,6 +19,7 @@ package controllers
 import (
 	"context"
 	"errors"
+	"time"
 
 	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -41,6 +42,9 @@ import (
 	msacommon "open-cluster-management.io/managed-serviceaccount/pkg/common"
 )
 
+const VALIDATION_MW_RETRY_COUNT = 10
+const VALIDATION_MW_RETRY_INTERVAL = 5 * time.Second
+
 // ClusterPermissionReconciler reconciles a ClusterPermission object
 type ClusterPermissionReconciler struct {
 	client.Client
@@ -51,6 +55,7 @@ type ClusterPermissionReconciler struct {
 func (r *ClusterPermissionReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&cpv1alpha1.ClusterPermission{}).
+		Owns(&workv1.ManifestWork{}).
 		Complete(r)
 }
 
@@ -115,6 +120,15 @@ func (r *ClusterPermissionReconciler) Reconcile(ctx context.Context, req ctrl.Re
 
 		log.Error(err, "unable to fetch ManagedCluster")
 		return ctrl.Result{}, err
+	}
+
+	// Handle validation if enabled
+	if clusterPermission.Spec.Validate != nil && *clusterPermission.Spec.Validate {
+		log.Info("validation enabled, processing role validation")
+		if err := r.handleValidation(ctx, &clusterPermission); err != nil {
+			log.Error(err, "failed to handle validation")
+			return ctrl.Result{}, err
+		}
 	}
 
 	log.Info("preparing ManifestWork payload")
@@ -526,4 +540,160 @@ func (r *ClusterPermissionReconciler) generateManifestWorkPayload(ctx context.Co
 	}
 
 	return clusterRole, clusterRoleBindings, roles, roleBindings, nil
+}
+
+// handleValidation processes role validation when spec.validate is enabled
+func (r *ClusterPermissionReconciler) handleValidation(ctx context.Context, clusterPermission *cpv1alpha1.ClusterPermission) error {
+	log := log.FromContext(ctx)
+
+	// Extract role references that need validation
+	roleRefs := extractRoleReferencesForValidation(clusterPermission)
+	if len(roleRefs) == 0 {
+		log.Info("no role references found for validation")
+		return nil
+	}
+
+	validationMWName := generateValidationManifestWorkName(*clusterPermission)
+	validationManifestWork := buildValidationManifestWork(*clusterPermission, validationMWName, roleRefs)
+
+	// Create or update validation ManifestWork
+	var existingValidationMW workv1.ManifestWork
+	err := r.Get(ctx, types.NamespacedName{Name: validationMWName, Namespace: clusterPermission.Namespace}, &existingValidationMW)
+	if apierrors.IsNotFound(err) {
+		log.Info("creating validation ManifestWork")
+		err = r.Client.Create(ctx, validationManifestWork)
+		if err != nil {
+			log.Error(err, "unable to create validation ManifestWork")
+			return err
+		}
+	} else if err == nil {
+		log.Info("updating validation ManifestWork")
+		existingValidationMW.Spec = validationManifestWork.Spec
+		err = r.Client.Update(ctx, &existingValidationMW)
+		if err != nil {
+			log.Error(err, "unable to update validation ManifestWork")
+			return err
+		}
+	} else {
+		log.Error(err, "unable to fetch validation ManifestWork")
+		return err
+	}
+
+	// Process validation results from ManifestWork status
+	return r.processValidationResults(ctx, clusterPermission, validationMWName)
+}
+
+// processValidationResults processes the feedback from validation ManifestWork and updates status conditions
+func (r *ClusterPermissionReconciler) processValidationResults(ctx context.Context, clusterPermission *cpv1alpha1.ClusterPermission, validationMWName string) error {
+	log := log.FromContext(ctx)
+
+	// Get the validation ManifestWork to check its status
+	var validationMW workv1.ManifestWork
+	success := false
+	for i := 0; i < VALIDATION_MW_RETRY_COUNT; i++ {
+		log.Info("checking validation ManifestWork status", "attempt", i+1)
+		err := r.Get(ctx, types.NamespacedName{Name: validationMWName, Namespace: clusterPermission.Namespace}, &validationMW)
+		if err != nil {
+			if apierrors.IsNotFound(err) {
+				// ManifestWork doesn't exist yet, nothing to process
+				return nil
+			}
+			return err
+		}
+		if validationMW.Status.Conditions[0].Type == "Applied" && validationMW.Status.Conditions[0].Status == "True" {
+			log.Info("validation ManifestWork completed successfully")
+			success = true
+			break
+		}
+		time.Sleep(VALIDATION_MW_RETRY_INTERVAL)
+	}
+
+	if !success {
+		log.Error(errors.New("validation ManifestWork failed to complete"), "validation ManifestWork failed to complete")
+		return errors.New("validation ManifestWork failed to complete")
+	}
+
+	// Analyze the status feedback to determine which roles are missing
+	var missingRoles []string
+	var missingClusterRoles []string
+
+	// Check feedback from ManifestWork status
+	found := false
+	for _, status := range validationMW.Status.ResourceStatus.Manifests {
+		for _, condition := range status.Conditions {
+			if condition.Type == "Available" && condition.Status == "True" {
+				found = true
+				break
+			}
+		}
+
+		// If role not found in feedback or feedback indicates error, consider it missing
+		if !found {
+			if status.ResourceMeta.Kind == "Role" {
+				missingRoles = append(missingRoles, status.ResourceMeta.Namespace+"/"+status.ResourceMeta.Name)
+			} else if status.ResourceMeta.Kind == "ClusterRole" {
+				missingClusterRoles = append(missingClusterRoles, status.ResourceMeta.Name)
+			}
+		}
+	}
+
+	// Update status conditions based on validation results
+	var conditions []*metav1.Condition
+
+	if len(missingRoles) > 0 {
+		conditions = append(conditions, &metav1.Condition{
+			Type:    cpv1alpha1.ConditionTypeValidateRolesExist,
+			Status:  metav1.ConditionFalse,
+			Reason:  "RolesNotFound",
+			Message: "The following roles were not found: " + joinStrings(missingRoles, ", "),
+		})
+	} else {
+		conditions = append(conditions, &metav1.Condition{
+			Type:    cpv1alpha1.ConditionTypeValidateRolesExist,
+			Status:  metav1.ConditionTrue,
+			Reason:  "AllRolesFound",
+			Message: "All referenced roles were found",
+		})
+	}
+
+	if len(missingClusterRoles) > 0 {
+		conditions = append(conditions, &metav1.Condition{
+			Type:    cpv1alpha1.ConditionTypeValidateClusterRolesExist,
+			Status:  metav1.ConditionFalse,
+			Reason:  "ClusterRolesNotFound",
+			Message: "The following cluster roles were not found: " + joinStrings(missingClusterRoles, ", "),
+		})
+	} else {
+		conditions = append(conditions, &metav1.Condition{
+			Type:    cpv1alpha1.ConditionTypeValidateClusterRolesExist,
+			Status:  metav1.ConditionTrue,
+			Reason:  "AllClusterRolesFound",
+			Message: "All referenced cluster roles were found",
+		})
+	}
+
+	// Update all conditions
+	for _, condition := range conditions {
+		if err := r.updateStatus(ctx, clusterPermission, condition); err != nil {
+			log.Error(err, "failed to update validation status condition", "type", condition.Type)
+		}
+	}
+
+	return nil
+}
+
+// joinStrings joins a slice of strings with a separator
+func joinStrings(strings []string, separator string) string {
+	if len(strings) == 0 {
+		return ""
+	}
+	if len(strings) == 1 {
+		return strings[0]
+	}
+
+	result := strings[0]
+	for i := 1; i < len(strings); i++ {
+		result += separator + strings[i]
+	}
+	return result
 }

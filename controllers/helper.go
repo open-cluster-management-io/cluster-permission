@@ -24,10 +24,163 @@ import (
 	cpv1alpha1 "open-cluster-management.io/cluster-permission/api/v1alpha1"
 )
 
+// ValidationRoleRef represents a role reference that needs validation
+type ValidationRoleRef struct {
+	Name      string
+	Namespace string // empty for ClusterRoles
+	Kind      string // "Role" or "ClusterRole"
+}
+
 // generateManifestWorkName returns the ManifestWork name for a given ClusterPermission.
 // It uses the ClusterPermission name with the suffix of the first 5 characters of the UID
 func generateManifestWorkName(clusterPermission cpv1alpha1.ClusterPermission) string {
 	return clusterPermission.Name + "-" + string(clusterPermission.UID)[0:5]
+}
+
+// generateValidationManifestWorkName returns the validation ManifestWork name for a given ClusterPermission.
+func generateValidationManifestWorkName(clusterPermission cpv1alpha1.ClusterPermission) string {
+	return clusterPermission.Name + "-validation-" + string(clusterPermission.UID)[0:5]
+}
+
+// extractRoleReferencesForValidation extracts all role and clusterrole references that need validation
+func extractRoleReferencesForValidation(clusterPermission *cpv1alpha1.ClusterPermission) []ValidationRoleRef {
+	var roleRefs []ValidationRoleRef
+	seenRefs := make(map[string]bool) // to avoid duplicates
+
+	// Extract ClusterRole references from ClusterRoleBindings
+	if clusterPermission.Spec.ClusterRoleBinding != nil && clusterPermission.Spec.ClusterRoleBinding.RoleRef != nil {
+		ref := clusterPermission.Spec.ClusterRoleBinding.RoleRef
+		if ref.Kind == "ClusterRole" {
+			key := "ClusterRole:" + ref.Name
+			if !seenRefs[key] {
+				roleRefs = append(roleRefs, ValidationRoleRef{
+					Name: ref.Name,
+					Kind: "ClusterRole",
+				})
+				seenRefs[key] = true
+			}
+		}
+	}
+
+	if clusterPermission.Spec.ClusterRoleBindings != nil {
+		for _, crb := range *clusterPermission.Spec.ClusterRoleBindings {
+			if crb.RoleRef != nil && crb.RoleRef.Kind == "ClusterRole" {
+				key := "ClusterRole:" + crb.RoleRef.Name
+				if !seenRefs[key] {
+					roleRefs = append(roleRefs, ValidationRoleRef{
+						Name: crb.RoleRef.Name,
+						Kind: "ClusterRole",
+					})
+					seenRefs[key] = true
+				}
+			}
+		}
+	}
+
+	// Extract Role references from RoleBindings
+	if clusterPermission.Spec.RoleBindings != nil {
+		for _, rb := range *clusterPermission.Spec.RoleBindings {
+			if rb.RoleRef.Kind == "Role" {
+				// For roles, we need to know the namespace
+				namespace := rb.Namespace
+				if namespace != "" {
+					key := "Role:" + namespace + ":" + rb.RoleRef.Name
+					if !seenRefs[key] {
+						roleRefs = append(roleRefs, ValidationRoleRef{
+							Name:      rb.RoleRef.Name,
+							Namespace: namespace,
+							Kind:      "Role",
+						})
+						seenRefs[key] = true
+					}
+				}
+			} else if rb.RoleRef.Kind == "ClusterRole" {
+				key := "ClusterRole:" + rb.RoleRef.Name
+				if !seenRefs[key] {
+					roleRefs = append(roleRefs, ValidationRoleRef{
+						Name: rb.RoleRef.Name,
+						Kind: "ClusterRole",
+					})
+					seenRefs[key] = true
+				}
+			}
+		}
+	}
+
+	return roleRefs
+}
+
+// buildValidationManifestWork creates a ManifestWork that validates role existence on the managed cluster
+// This ManifestWork uses ManifestWork's feedback rules to check if the referenced roles exist
+func buildValidationManifestWork(clusterPermission cpv1alpha1.ClusterPermission, manifestWorkName string, roleRefs []ValidationRoleRef) *workv1.ManifestWork {
+	var manifestConfigs []workv1.ManifestConfigOption
+	var manifests []workv1.Manifest
+
+	// For each role reference, create a ManifestConfig that uses feedback rules to check existence
+	for _, roleRef := range roleRefs {
+		if roleRef.Kind == "ClusterRole" {
+			manifestConfigs = append(manifestConfigs, workv1.ManifestConfigOption{
+				ResourceIdentifier: workv1.ResourceIdentifier{
+					Group:    "rbac.authorization.k8s.io",
+					Resource: "clusterroles",
+					Name:     roleRef.Name,
+				},
+				UpdateStrategy: &workv1.UpdateStrategy{
+					Type: "ReadOnly",
+				},
+			})
+			manifests = append(manifests, workv1.Manifest{RawExtension: runtime.RawExtension{Object: &rbacv1.ClusterRole{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "rbac.authorization.k8s.io/v1",
+					Kind:       "ClusterRole",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name: roleRef.Name,
+				},
+			},
+			}})
+		} else if roleRef.Kind == "Role" {
+			manifestConfigs = append(manifestConfigs, workv1.ManifestConfigOption{
+				ResourceIdentifier: workv1.ResourceIdentifier{
+					Group:     "rbac.authorization.k8s.io",
+					Resource:  "roles",
+					Name:      roleRef.Name,
+					Namespace: roleRef.Namespace,
+				},
+				UpdateStrategy: &workv1.UpdateStrategy{
+					Type: "ReadOnly",
+				},
+			})
+			manifests = append(manifests, workv1.Manifest{RawExtension: runtime.RawExtension{Object: &rbacv1.Role{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "rbac.authorization.k8s.io/v1",
+					Kind:       "Role",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      roleRef.Name,
+					Namespace: roleRef.Namespace,
+				},
+			}}})
+		}
+	}
+
+	// setup the owner so when ClusterPermission is deleted, the associated ManifestWork is also deleted
+	owner := metav1.NewControllerRef(&clusterPermission, cpv1alpha1.GroupVersion.WithKind("ClusterPermission"))
+
+	return &workv1.ManifestWork{
+		TypeMeta: metav1.TypeMeta{},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            manifestWorkName,
+			Namespace:       clusterPermission.Namespace,
+			OwnerReferences: []metav1.OwnerReference{*owner},
+		},
+		Spec: workv1.ManifestWorkSpec{
+			Workload: workv1.ManifestsTemplate{
+				Manifests: manifests,
+			},
+			ManifestConfigs: manifestConfigs,
+		},
+	}
 }
 
 // buildManifestWork wraps the payloads in a ManifestWork
