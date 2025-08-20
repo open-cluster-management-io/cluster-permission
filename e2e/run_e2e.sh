@@ -176,7 +176,9 @@ fi
 echo "TEST ClusterPermission to validate non-existing clusterroles"
 kubectl apply -f config/samples/clusterpermission_validate_non_existing.yaml -n cluster1
 sleep 30
-work_kubectl_command=$(kubectl -n cluster1 get clusterpermission clusterpermission-validate-non-existing -o yaml | grep kubectl | grep ManifestWork)
+cp_uid=$(kubectl -n cluster1 get clusterpermission clusterpermission-validate-non-existing -o jsonpath='{.metadata.uid}' | cut -c1-5)
+echo "cp_uid: ${cp_uid}"
+work_kubectl_command=$(kubectl -n cluster1 get clusterpermission clusterpermission-validate-non-existing-validation-${cp_uid} -o yaml)
 if $work_kubectl_command; then
     echo "ManifestWork found"
 else
