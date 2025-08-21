@@ -183,7 +183,7 @@ echo -e "work_kubectl_command: \n${work_kubectl_command}"
 clusterpermission_yaml=$(kubectl -n cluster1 get clusterpermission clusterpermission-validate-non-existing -o yaml)
 echo -e "clusterpermission_yaml: \n${clusterpermission_yaml}"
 
-if kubectl -n cluster1 get clusterpermission clusterpermission-validate-non-existing -o yaml | grep "The following cluster roles were not found: argocd-application-controller-1, argocd-application-controller-3"; then
+if kubectl -n cluster1 get clusterpermission clusterpermission-validate-non-existing -o yaml | grep "The following cluster roles were not found: argocd-application-controller-3"; then
     echo "ClusterRole not found error found"
 else
     echo "ClusterRole not found error not found"
