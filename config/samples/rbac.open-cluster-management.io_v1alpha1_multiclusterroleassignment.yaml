@@ -1,4 +1,4 @@
-apiVersion: rbac.open-cluster-management.io.open-cluster-management.io/v1alpha1
+apiVersion: rbac.open-cluster-management.io/v1alpha1
 kind: MulticlusterRoleAssignment
 metadata:
   labels:
@@ -7,6 +7,22 @@ metadata:
     app.kubernetes.io/part-of: cluster-permission
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/created-by: cluster-permission
-  name: multiclusterroleassignment-sample
+  name: alice-trask-role-assignment-console
+  namespace: open-cluster-management-global-set
 spec:
-  # TODO(user): Add fields here
+  subject:
+    kind: User
+    name: alice.trask
+  roleAssignments:
+    - clusterRole: kubevirt.io:admin
+      targetNamespaces:
+        - kubevirt-production
+        - vm-workloads
+      clusterSets:
+        - production-cluster
+    - clusterRole: kubevirt.io:admin
+      targetNamespaces:
+        - kubevirt-staging
+        - vm-workloads
+      clusterSets:
+        - staging-cluster

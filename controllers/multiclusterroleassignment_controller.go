@@ -24,7 +24,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	rbacopenclustermanagementiov1alpha1 "open-cluster-management.io/cluster-permission/api/v1alpha1"
+	mcrav1alpha1 "open-cluster-management.io/cluster-permission/api/v1alpha1"
 )
 
 // MulticlusterRoleAssignmentReconciler reconciles a MulticlusterRoleAssignment object
@@ -57,6 +57,6 @@ func (r *MulticlusterRoleAssignmentReconciler) Reconcile(ctx context.Context, re
 // SetupWithManager sets up the controller with the Manager.
 func (r *MulticlusterRoleAssignmentReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&rbacopenclustermanagementiov1alpha1.MulticlusterRoleAssignment{}).
+		For(&mcrav1alpha1.MulticlusterRoleAssignment{}).
 		Complete(r)
 }
