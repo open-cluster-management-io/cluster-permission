@@ -23,25 +23,60 @@ import (
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
-// MulticlusterRoleAssignmentSpec defines the desired state of MulticlusterRoleAssignment
+// MulticlusterRoleAssignmentSpec defines the desired state of MulticlusterRoleAssignment.
 type MulticlusterRoleAssignmentSpec struct {
-	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
+	// Subject defines the user or group for all role assignments.
+	// +kubebuilder:validation:Required
+	Subject Subject `json:"subject"`
 
-	// Foo is an example field of MulticlusterRoleAssignment. Edit multiclusterroleassignment_types.go to remove/update
-	Foo string `json:"foo,omitempty"`
+	// RoleAssignments defines the list of role assignments for different roles, namespaces, and cluster sets.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinItems=1
+	RoleAssignments []RoleAssignment `json:"roleAssignments"`
 }
 
-// MulticlusterRoleAssignmentStatus defines the observed state of MulticlusterRoleAssignment
+// Subject defines the user or group for all role assignments.
+type Subject struct {
+	// Kind defines the subject kind (User or Group).
+	// +kubebuilder:validation:Enum=User;Group
+	// +kubebuilder:validation:Required
+	Kind string `json:"kind"`
+
+	// Name defines the subject name.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	Name string `json:"name"`
+}
+
+// RoleAssignment defines a cluster role assignment to specific namespaces and cluster sets.
+type RoleAssignment struct {
+	// ClusterRole defines the cluster role name to be assigned.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	ClusterRole string `json:"clusterRole"`
+
+	// TargetNamespaces defines what namespaces the role should be applied in.
+	// If TargetNamespaces is not present, the role will be applied to all cluster namespaces.
+	// +kubebuilder:validation:Optional
+	TargetNamespaces []string `json:"targetNamespaces,omitempty"`
+
+	// ClusterSets defines the cluster sets where the role should be applied.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinItems=1
+	ClusterSets []string `json:"clusterSets"`
+}
+
+// MulticlusterRoleAssignmentStatus defines the observed state of MulticlusterRoleAssignment.
 type MulticlusterRoleAssignmentStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
+	// Conditions is the condition list.
+	// +optional
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 
-// MulticlusterRoleAssignment is the Schema for the multiclusterroleassignments API
+// MulticlusterRoleAssignment is the Schema for the multiclusterroleassignments API.
 type MulticlusterRoleAssignment struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -52,7 +87,7 @@ type MulticlusterRoleAssignment struct {
 
 //+kubebuilder:object:root=true
 
-// MulticlusterRoleAssignmentList contains a list of MulticlusterRoleAssignment
+// MulticlusterRoleAssignmentList contains a list of MulticlusterRoleAssignment.
 type MulticlusterRoleAssignmentList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
