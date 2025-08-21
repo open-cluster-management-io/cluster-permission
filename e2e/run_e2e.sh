@@ -179,13 +179,9 @@ sleep 30
 cp_uid=$(kubectl -n cluster1 get clusterpermission clusterpermission-validate-non-existing -o jsonpath='{.metadata.uid}' | cut -c1-5)
 echo "cp_uid: ${cp_uid}"
 work_kubectl_command=$(kubectl -n cluster1 get manifestwork clusterpermission-validate-non-existing-validation-${cp_uid} -o yaml)
-echo "work_kubectl_command: ${work_kubectl_command}"
-if "$work_kubectl_command"; then
-    echo "ManifestWork found"
-else
-    echo "ManifestWork not found"
-    exit 1
-fi
+echo -e "work_kubectl_command: \n${work_kubectl_command}"
+clusterpermission_yaml=$(kubectl -n cluster1 get clusterpermission clusterpermission-validate-non-existing -o yaml)
+echo -e "clusterpermission_yaml: \n${clusterpermission_yaml}"
 
 if kubectl -n cluster1 get clusterpermission clusterpermission-validate-non-existing -o yaml | grep "The following cluster roles were not found: argocd-application-controller-1, argocd-application-controller-3"; then
     echo "ClusterRole not found error found"
