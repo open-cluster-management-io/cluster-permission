@@ -178,7 +178,7 @@ kubectl apply -f config/samples/clusterpermission_validate_non_existing.yaml -n 
 sleep 30
 cp_uid=$(kubectl -n cluster1 get clusterpermission clusterpermission-validate-non-existing -o jsonpath='{.metadata.uid}' | cut -c1-5)
 echo "cp_uid: ${cp_uid}"
-work_kubectl_command=$(kubectl -n cluster1 get clusterpermission clusterpermission-validate-non-existing-validation-${cp_uid} -o yaml)
+work_kubectl_command=$(kubectl -n cluster1 get manifestwork clusterpermission-validate-non-existing-validation-${cp_uid} -o yaml)
 if $work_kubectl_command; then
     echo "ManifestWork found"
 else
