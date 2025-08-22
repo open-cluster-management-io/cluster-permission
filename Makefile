@@ -81,14 +81,14 @@ build-multicluster-role-assignment:
 	go build -o bin/multicluster-role-assignment cmd/multiclusterroleassignment/main.go
 
 .PHONY: run
-run: run-cluster-permission ## Run cluster-permission controller from your host.
+run: run-cluster-permission
 
 .PHONY: run-cluster-permission
-run-cluster-permission: manifests generate fmt vet ## Run cluster-permission controller from your host.
+run-cluster-permission: manifests generate fmt vet
 	go run ./cmd/clusterpermission/main.go
 
 .PHONY: run-multicluster-role-assignment
-run-multicluster-role-assignment: manifests generate fmt vet ## Run multicluster-role-assignment controller from your host.
+run-multicluster-role-assignment: manifests generate fmt vet
 	go run ./cmd/multiclusterroleassignment/main.go
 
 # If you wish built the manager image targeting other platforms you can use the --platform flag.
