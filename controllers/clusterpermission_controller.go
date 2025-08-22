@@ -160,12 +160,15 @@ func (r *ClusterPermissionReconciler) Reconcile(ctx context.Context, req ctrl.Re
 			return ctrl.Result{}, err
 		}
 	} else if err == nil {
-		log.Info("updating ManifestWork")
-		mw.Spec = manifestWork.Spec
-		err = r.Client.Update(ctx, &mw)
-		if err != nil {
-			log.Error(err, "unable to update ManifestWork")
-			return ctrl.Result{}, err
+		mwAppliedCondition := meta.FindStatusCondition(mw.Status.Conditions, "Applied")
+		if mwAppliedCondition != nil && mwAppliedCondition.Status == "True" {
+			log.Info("updating ManifestWork")
+			mw.Spec = manifestWork.Spec
+			err = r.Client.Update(ctx, &mw)
+			if err != nil {
+				log.Error(err, "unable to update ManifestWork")
+				return ctrl.Result{}, err
+			}
 		}
 	} else {
 		log.Error(err, "unable to fetch ManifestWork")

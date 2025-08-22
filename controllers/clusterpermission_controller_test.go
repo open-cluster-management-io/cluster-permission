@@ -138,6 +138,17 @@ var _ = Describe("ClusterPermission controller", func() {
 			}).Should(BeTrue())
 
 			By("Updating the ClusterPermission")
+			// Hack since Ginkgo is not updating the status of the ManifestWork
+			mw.Status.Conditions = []metav1.Condition{
+				{
+					Type:               "Applied",
+					Status:             "True",
+					LastTransitionTime: metav1.Now(),
+					Reason:             "Applied",
+					Message:            "ManifestWork applied successfully",
+				},
+			}
+			Expect(k8sClient.Status().Update(ctx, &mw)).Should(Succeed())
 			time.Sleep(3 * time.Second)
 			oldRv := mw.GetResourceVersion()
 			Expect(k8sClient.Get(ctx, mbacKey, &clusterPermission)).Should(Succeed())
