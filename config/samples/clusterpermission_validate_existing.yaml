@@ -5,7 +5,7 @@ metadata:
 spec:
   validate: true
   roleBindings:
-    - name: default
+    - name: default-existing
       namespace: default
       roleRef:
         apiGroup: rbac.authorization.k8s.io
@@ -16,7 +16,7 @@ spec:
         kind: ServiceAccount
         name: sa-sample-existing
   clusterRoleBinding:
-      name: crb-cluster1-argo-app-con-3
+      name: crb-cluster1-argo-app-con-3-existing
       roleRef:
         apiGroup: rbac.authorization.k8s.io
         kind: ClusterRole
