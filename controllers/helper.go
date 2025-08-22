@@ -37,11 +37,6 @@ func generateManifestWorkName(clusterPermission cpv1alpha1.ClusterPermission) st
 	return clusterPermission.Name + "-" + string(clusterPermission.UID)[0:5]
 }
 
-// generateValidationManifestWorkName returns the validation ManifestWork name for a given ClusterPermission.
-func generateValidationManifestWorkName(clusterPermission cpv1alpha1.ClusterPermission) string {
-	return clusterPermission.Name + "-validation-" + string(clusterPermission.UID)[0:5]
-}
-
 // extractRoleReferencesForValidation extracts all role and clusterrole references that need validation
 func extractRoleReferencesForValidation(clusterPermission *cpv1alpha1.ClusterPermission) []ValidationRoleRef {
 	var roleRefs []ValidationRoleRef
@@ -110,86 +105,16 @@ func extractRoleReferencesForValidation(clusterPermission *cpv1alpha1.ClusterPer
 	return roleRefs
 }
 
-// buildValidationManifestWork creates a ManifestWork that validates role existence on the managed cluster
-// This ManifestWork uses ManifestWork's feedback rules to check if the referenced roles exist
-func buildValidationManifestWork(clusterPermission cpv1alpha1.ClusterPermission, manifestWorkName string, roleRefs []ValidationRoleRef) *workv1.ManifestWork {
-	var manifestConfigs []workv1.ManifestConfigOption
-	var manifests []workv1.Manifest
-
-	// For each role reference, create a ManifestConfig that uses feedback rules to check existence
-	for _, roleRef := range roleRefs {
-		if roleRef.Kind == "ClusterRole" {
-			manifestConfigs = append(manifestConfigs, workv1.ManifestConfigOption{
-				ResourceIdentifier: workv1.ResourceIdentifier{
-					Group:    "rbac.authorization.k8s.io",
-					Resource: "clusterroles",
-					Name:     roleRef.Name,
-				},
-				UpdateStrategy: &workv1.UpdateStrategy{
-					Type: "ReadOnly",
-				},
-			})
-			manifests = append(manifests, workv1.Manifest{RawExtension: runtime.RawExtension{Object: &rbacv1.ClusterRole{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "rbac.authorization.k8s.io/v1",
-					Kind:       "ClusterRole",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name: roleRef.Name,
-				},
-			},
-			}})
-		} else if roleRef.Kind == "Role" {
-			manifestConfigs = append(manifestConfigs, workv1.ManifestConfigOption{
-				ResourceIdentifier: workv1.ResourceIdentifier{
-					Group:     "rbac.authorization.k8s.io",
-					Resource:  "roles",
-					Name:      roleRef.Name,
-					Namespace: roleRef.Namespace,
-				},
-				UpdateStrategy: &workv1.UpdateStrategy{
-					Type: "ReadOnly",
-				},
-			})
-			manifests = append(manifests, workv1.Manifest{RawExtension: runtime.RawExtension{Object: &rbacv1.Role{
-				TypeMeta: metav1.TypeMeta{
-					APIVersion: "rbac.authorization.k8s.io/v1",
-					Kind:       "Role",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      roleRef.Name,
-					Namespace: roleRef.Namespace,
-				},
-			}}})
-		}
-	}
-
-	// setup the owner so when ClusterPermission is deleted, the associated ManifestWork is also deleted
-	owner := metav1.NewControllerRef(&clusterPermission, cpv1alpha1.GroupVersion.WithKind("ClusterPermission"))
-
-	return &workv1.ManifestWork{
-		TypeMeta: metav1.TypeMeta{},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:            manifestWorkName,
-			Namespace:       clusterPermission.Namespace,
-			OwnerReferences: []metav1.OwnerReference{*owner},
-		},
-		Spec: workv1.ManifestWorkSpec{
-			Workload: workv1.ManifestsTemplate{
-				Manifests: manifests,
-			},
-			ManifestConfigs: manifestConfigs,
-		},
-	}
-}
-
 // buildManifestWork wraps the payloads in a ManifestWork
 func buildManifestWork(clusterPermission cpv1alpha1.ClusterPermission, manifestWorkName string,
 	clusterRole *rbacv1.ClusterRole,
 	clusterRoleBindings []rbacv1.ClusterRoleBinding,
 	roles []rbacv1.Role,
-	roleBindings []rbacv1.RoleBinding) *workv1.ManifestWork {
+	roleBindings []rbacv1.RoleBinding,
+	roleRefs []ValidationRoleRef,
+	validateCP bool) *workv1.ManifestWork {
 	var manifests []workv1.Manifest
+	var manifestConfigs []workv1.ManifestConfigOption
 
 	if clusterRole != nil {
 		manifests = append(manifests, workv1.Manifest{RawExtension: runtime.RawExtension{Object: clusterRole}})
@@ -213,6 +138,54 @@ func buildManifestWork(clusterPermission cpv1alpha1.ClusterPermission, manifestW
 		}
 	}
 
+	if validateCP && len(roleRefs) > 0 {
+		for _, roleRef := range roleRefs {
+			if roleRef.Kind == "ClusterRole" {
+				manifestConfigs = append(manifestConfigs, workv1.ManifestConfigOption{
+					ResourceIdentifier: workv1.ResourceIdentifier{
+						Group:    "rbac.authorization.k8s.io",
+						Resource: "clusterroles",
+						Name:     roleRef.Name,
+					},
+					UpdateStrategy: &workv1.UpdateStrategy{
+						Type: "ReadOnly",
+					},
+				})
+				manifests = append(manifests, workv1.Manifest{RawExtension: runtime.RawExtension{Object: &rbacv1.ClusterRole{
+					TypeMeta: metav1.TypeMeta{
+						APIVersion: "rbac.authorization.k8s.io/v1",
+						Kind:       "ClusterRole",
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Name: roleRef.Name,
+					},
+				}}})
+			} else if roleRef.Kind == "Role" {
+				manifestConfigs = append(manifestConfigs, workv1.ManifestConfigOption{
+					ResourceIdentifier: workv1.ResourceIdentifier{
+						Group:     "rbac.authorization.k8s.io",
+						Resource:  "roles",
+						Name:      roleRef.Name,
+						Namespace: roleRef.Namespace,
+					},
+					UpdateStrategy: &workv1.UpdateStrategy{
+						Type: "ReadOnly",
+					},
+				})
+				manifests = append(manifests, workv1.Manifest{RawExtension: runtime.RawExtension{Object: &rbacv1.Role{
+					TypeMeta: metav1.TypeMeta{
+						APIVersion: "rbac.authorization.k8s.io/v1",
+						Kind:       "Role",
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      roleRef.Name,
+						Namespace: roleRef.Namespace,
+					},
+				}}})
+			}
+		}
+	}
+
 	// setup the owner so when ClusterPermission is deleted, the associated ManifestWork is also deleted
 	owner := metav1.NewControllerRef(&clusterPermission, cpv1alpha1.GroupVersion.WithKind("ClusterPermission"))
 
@@ -227,6 +200,7 @@ func buildManifestWork(clusterPermission cpv1alpha1.ClusterPermission, manifestW
 			Workload: workv1.ManifestsTemplate{
 				Manifests: manifests,
 			},
+			ManifestConfigs: manifestConfigs,
 		},
 	}
 }

@@ -66,6 +66,7 @@ func Test_buildManifestWork(t *testing.T) {
 		clusterRoleBinding *rbacv1.ClusterRoleBinding
 		roles              []rbacv1.Role
 		roleBindings       []rbacv1.RoleBinding
+		roleRefs           []ValidationRoleRef
 	}
 	type wants struct {
 		manifestWorkName              string
@@ -116,6 +117,7 @@ func Test_buildManifestWork(t *testing.T) {
 						UID:       types.UID("123456789"),
 					},
 				},
+				roleRefs: []ValidationRoleRef{},
 			},
 			wants: wants{
 				manifestWorkName:              "work-1",
@@ -129,7 +131,7 @@ func Test_buildManifestWork(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := buildManifestWork(tt.args.clusterPermission, tt.args.manifestWorkName, tt.args.clusterRole, []rbacv1.ClusterRoleBinding{*tt.args.clusterRoleBinding},
-				tt.args.roles, tt.args.roleBindings)
+				tt.args.roles, tt.args.roleBindings, tt.args.roleRefs, false)
 			// check work name
 			if got.Name != tt.wants.manifestWorkName {
 				t.Errorf("buildManifestWork() manifestWorkName = %v, want %v", got.Name, tt.wants.manifestWorkName)
