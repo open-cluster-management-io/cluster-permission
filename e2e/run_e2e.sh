@@ -5,6 +5,7 @@ set -o pipefail
 
 echo "SETUP install cluster-permission"
 kubectl config use-context kind-hub
+kubectl apply -f hack/crds
 kubectl apply -f config/crds
 kubectl apply -f config/rbac
 kubectl apply -f config/deploy

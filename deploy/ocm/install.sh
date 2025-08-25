@@ -13,7 +13,8 @@ REPO_DIR="$(dirname "$EXAMPLE_DIR")"
 WORK_DIR="${REPO_DIR}/_output"
 CLUSTERADM="clusteradm"
 
-export PATH=$PATH:${WORK_DIR}/bin
+GOPATH_BIN=$(go env GOPATH)/bin
+export PATH=$PATH:${WORK_DIR}/bin:${GOPATH_BIN}
 
 echo "############  Install clusteradm"
 go install open-cluster-management.io/clusteradm/cmd/clusteradm@main

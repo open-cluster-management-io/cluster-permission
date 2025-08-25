@@ -227,6 +227,21 @@ make generate
 make manifests
 ```
 
+### Run E2E Tests Locally
+```bash
+# Create kind cluster named hub
+kind create cluster --name hub
+
+# Build docker image locally
+docker build -t quay.io/open-cluster-management/cluster-permission:latest .
+
+# Add local docker image to kind cluster
+kind load docker-image quay.io/open-cluster-management/cluster-permission:latest --name hub
+
+# Run e2e tests
+make test-e2e
+```
+
 ## Community and Support
 
 ### Contributing
