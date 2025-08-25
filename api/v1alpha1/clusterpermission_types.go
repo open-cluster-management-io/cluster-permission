@@ -22,12 +22,20 @@ import (
 )
 
 const (
-	ConditionTypeAppliedRBACManifestWork string = "AppliedRBACManifestWork"
-	ConditionTypeValidation              string = "Validation"
+	ConditionTypeAppliedRBACManifestWork   string = "AppliedRBACManifestWork"
+	ConditionTypeValidation                string = "Validation"
+	ConditionTypeValidateRolesExist        string = "ValidateRolesExist"
+	ConditionTypeValidateClusterRolesExist string = "ValidateClusterRolesExist"
 )
 
 // ClusterPermissionSpec defines the desired state of ClusterPermission
 type ClusterPermissionSpec struct {
+	// Validate enables validation of roles and clusterroles on the managed cluster using ManifestWork
+	// When enabled, the controller will create a validation ManifestWork to check if the referenced
+	// roles and clusterroles exist on the managed cluster
+	// +optional
+	Validate *bool `json:"validate,omitempty"`
+
 	// ClusterRole represents the ClusterRole that is being created on the managed cluster
 	// +optional
 	ClusterRole *ClusterRole `json:"clusterRole,omitempty"`

@@ -561,6 +561,12 @@ spec:
                   - rules
                   type: object
                 type: array
+              validate:
+                description: |-
+                  Validate enables validation of roles and clusterroles on the managed cluster using ManifestWork
+                  When enabled, the controller will create a validation ManifestWork to check if the referenced
+                  roles and clusterroles exist on the managed cluster
+                type: boolean
             type: object
           status:
             description: ClusterPermissionStatus defines the observed state of ClusterPermission

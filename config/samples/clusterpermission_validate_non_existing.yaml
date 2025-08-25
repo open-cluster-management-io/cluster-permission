@@ -1,0 +1,27 @@
+apiVersion: rbac.open-cluster-management.io/v1alpha1
+kind: ClusterPermission
+metadata:
+  name: clusterpermission-validate-non-existing
+spec:
+  validate: true
+  roleBindings:
+    - name: default-non-existing
+      namespace: default
+      roleRef:
+        apiGroup: rbac.authorization.k8s.io
+        kind: ClusterRole
+        name: argocd-application-controller-1
+      subject:
+        namespace: openshift-gitops
+        kind: ServiceAccount
+        name: sa-sample-existing
+  clusterRoleBinding:
+      name: crb-cluster1-argo-app-con-3-non-existing
+      roleRef:
+        apiGroup: rbac.authorization.k8s.io
+        kind: ClusterRole
+        name: argocd-application-controller-3
+      subject:
+        apiGroup: rbac.authorization.k8s.io
+        kind: Group
+        name: group1

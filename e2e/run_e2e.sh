@@ -172,3 +172,31 @@ else
     echo "multi-crb-binding2 user2 not found"
     exit 1
 fi
+
+echo "TEST ClusterPermission to validate non-existing clusterroles"
+kubectl apply -f config/samples/clusterpermission_validate_non_existing.yaml -n cluster1
+sleep 30
+if kubectl -n cluster1 get clusterpermission clusterpermission-validate-non-existing -o yaml | grep "The following cluster roles were not found: argocd-application-controller-3"; then
+    echo "ClusterRole not found error found"
+else
+    echo "ClusterRole not found error not found"
+    exit 1
+fi
+
+echo "TEST ClusterPermission to validate existing clusterroles"
+kubectl apply -f config/samples/clusterpermission_validate_existing.yaml -n cluster1
+sleep 30
+work_kubectl_command=$(kubectl -n cluster1 get clusterpermission clusterpermission-validate-existing -o yaml | grep kubectl | grep ManifestWork)
+if $work_kubectl_command; then
+    echo "ManifestWork found"
+else
+    echo "ManifestWork not found"
+    exit 1
+fi
+
+if kubectl -n cluster1 get clusterpermission clusterpermission-validate-existing -o yaml | grep "All referenced cluster roles were found"; then
+    echo "All referenced cluster roles were found"
+else
+    echo "All referenced cluster roles were not found"
+    exit 1
+fi

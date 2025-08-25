@@ -19,6 +19,7 @@ package controllers
 import (
 	"context"
 	"errors"
+	"time"
 
 	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -41,6 +42,8 @@ import (
 	msacommon "open-cluster-management.io/managed-serviceaccount/pkg/common"
 )
 
+const VALIDATION_MW_RETRY_INTERVAL = 10 * time.Second
+
 // ClusterPermissionReconciler reconciles a ClusterPermission object
 type ClusterPermissionReconciler struct {
 	client.Client
@@ -51,6 +54,7 @@ type ClusterPermissionReconciler struct {
 func (r *ClusterPermissionReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&cpv1alpha1.ClusterPermission{}).
+		Owns(&workv1.ManifestWork{}).
 		Complete(r)
 }
 
@@ -87,11 +91,13 @@ func (r *ClusterPermissionReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		(clusterPermission.Spec.RoleBindings == nil || len(*clusterPermission.Spec.RoleBindings) == 0) {
 		log.Info("no bindings defined for ClusterPermission")
 
-		err := r.updateStatus(ctx, &clusterPermission, &metav1.Condition{
-			Type:    cpv1alpha1.ConditionTypeValidation,
-			Status:  metav1.ConditionFalse,
-			Reason:  "FailedValidationNoBindingsDefined",
-			Message: "no bindings defined",
+		err := r.updateStatus(ctx, &clusterPermission, []*metav1.Condition{
+			{
+				Type:    cpv1alpha1.ConditionTypeValidation,
+				Status:  metav1.ConditionFalse,
+				Reason:  "FailedValidationNoBindingsDefined",
+				Message: "no bindings defined",
+			},
 		})
 
 		return ctrl.Result{}, err
@@ -103,11 +109,13 @@ func (r *ClusterPermissionReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		if apierrors.IsNotFound(err) {
 			log.Info("not found ManagedCluster")
 
-			err := r.updateStatus(ctx, &clusterPermission, &metav1.Condition{
-				Type:    cpv1alpha1.ConditionTypeValidation,
-				Status:  metav1.ConditionFalse,
-				Reason:  "FailedValidationNotInManagedClusterNamespace",
-				Message: "namespace value is not a managed cluster",
+			err := r.updateStatus(ctx, &clusterPermission, []*metav1.Condition{
+				{
+					Type:    cpv1alpha1.ConditionTypeValidation,
+					Status:  metav1.ConditionFalse,
+					Reason:  "FailedValidationNotInManagedClusterNamespace",
+					Message: "namespace value is not a managed cluster",
+				},
 			})
 
 			return ctrl.Result{}, err
@@ -117,18 +125,27 @@ func (r *ClusterPermissionReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		return ctrl.Result{}, err
 	}
 
+	validateCP := false
+	// Handle validation if enabled
+	if clusterPermission.Spec.Validate != nil && *clusterPermission.Spec.Validate {
+		log.Info("validation enabled")
+		validateCP = true
+	}
+
 	log.Info("preparing ManifestWork payload")
 
-	clusterRole, clusterRoleBindings, roles, roleBindings, err := r.generateManifestWorkPayload(
-		ctx, &clusterPermission)
+	clusterRole, clusterRoleBindings, roles, roleBindings, roleRefs, err := r.generateManifestWorkPayload(
+		ctx, &clusterPermission, validateCP)
 	if err != nil {
 		log.Error(err, "failed to generate payload")
 
-		errStatus := r.updateStatus(ctx, &clusterPermission, &metav1.Condition{
-			Type:    cpv1alpha1.ConditionTypeAppliedRBACManifestWork,
-			Status:  metav1.ConditionFalse,
-			Reason:  "FailedBuildManifestWork",
-			Message: err.Error(),
+		errStatus := r.updateStatus(ctx, &clusterPermission, []*metav1.Condition{
+			{
+				Type:    cpv1alpha1.ConditionTypeAppliedRBACManifestWork,
+				Status:  metav1.ConditionFalse,
+				Reason:  "FailedBuildManifestWork",
+				Message: err.Error(),
+			},
 		})
 
 		return ctrl.Result{}, errStatus
@@ -136,7 +153,7 @@ func (r *ClusterPermissionReconciler) Reconcile(ctx context.Context, req ctrl.Re
 
 	mwName := generateManifestWorkName(clusterPermission)
 	manifestWork := buildManifestWork(clusterPermission, mwName,
-		clusterRole, clusterRoleBindings, roles, roleBindings)
+		clusterRole, clusterRoleBindings, roles, roleBindings, roleRefs, validateCP)
 
 	var mw workv1.ManifestWork
 	err = r.Get(ctx, types.NamespacedName{Name: mwName, Namespace: clusterPermission.Namespace}, &mw)
@@ -160,13 +177,32 @@ func (r *ClusterPermissionReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		return ctrl.Result{}, err
 	}
 
-	err = r.updateStatus(ctx, &clusterPermission, &metav1.Condition{
-		Type:   cpv1alpha1.ConditionTypeAppliedRBACManifestWork,
-		Status: metav1.ConditionTrue,
-		Reason: cpv1alpha1.ConditionTypeAppliedRBACManifestWork,
-		Message: "Run the following command to check the ManifestWork status:\n" +
-			"kubectl -n " + clusterPermission.Namespace + " get ManifestWork " + mwName + " -o yaml",
+	var updatedMW workv1.ManifestWork
+	err = r.Get(ctx, types.NamespacedName{Name: mwName, Namespace: clusterPermission.Namespace}, &updatedMW)
+	if err != nil {
+		log.Error(err, "unable to fetch updated ManifestWork")
+		return ctrl.Result{}, err
+	}
+
+	err = r.updateStatus(ctx, &clusterPermission, []*metav1.Condition{
+		{
+			Type:   cpv1alpha1.ConditionTypeAppliedRBACManifestWork,
+			Status: metav1.ConditionTrue,
+			Reason: cpv1alpha1.ConditionTypeAppliedRBACManifestWork,
+			Message: "Run the following command to check the ManifestWork status:\n" +
+				"kubectl -n " + clusterPermission.Namespace + " get ManifestWork " + mwName + " -o yaml",
+		},
 	})
+
+	if validateCP {
+		mwAppliedCondition := meta.FindStatusCondition(updatedMW.Status.Conditions, "Applied")
+		if mwAppliedCondition == nil || mwAppliedCondition.Status != "True" {
+			log.Info("ManifestWork not applied, requeueing to get the status")
+			return ctrl.Result{Requeue: true, RequeueAfter: VALIDATION_MW_RETRY_INTERVAL}, err
+		} else {
+			err = r.processValidationResults(ctx, &clusterPermission, &updatedMW)
+		}
+	}
 
 	return ctrl.Result{}, err
 }
@@ -174,10 +210,13 @@ func (r *ClusterPermissionReconciler) Reconcile(ctx context.Context, req ctrl.Re
 // updateStatus will update the status of the ClusterPermission if there are changes to the status
 // after applying the given condition. It will also retry on conflict error.
 func (r *ClusterPermissionReconciler) updateStatus(ctx context.Context,
-	clusterPermission *cpv1alpha1.ClusterPermission, cond *metav1.Condition) error {
+	clusterPermission *cpv1alpha1.ClusterPermission, conds []*metav1.Condition) error {
 	return retry.RetryOnConflict(retry.DefaultBackoff, func() error {
 		newStatus := clusterPermission.Status.DeepCopy()
-		meta.SetStatusCondition(&newStatus.Conditions, *cond)
+		for _, cond := range conds {
+			meta.SetStatusCondition(&newStatus.Conditions, *cond)
+		}
+
 		if equality.Semantic.DeepEqual(clusterPermission.Status, newStatus) {
 			return nil
 		}
@@ -256,12 +295,14 @@ func (r *ClusterPermissionReconciler) generateSubjects(ctx context.Context,
 }
 
 // generateManifestWorkPayload creates the payload for the ManifestWork based on the ClusterPermission spec
-func (r *ClusterPermissionReconciler) generateManifestWorkPayload(ctx context.Context, clusterPermission *cpv1alpha1.ClusterPermission) (
-	*rbacv1.ClusterRole, []rbacv1.ClusterRoleBinding, []rbacv1.Role, []rbacv1.RoleBinding, error) {
+func (r *ClusterPermissionReconciler) generateManifestWorkPayload(ctx context.Context,
+	clusterPermission *cpv1alpha1.ClusterPermission, validateCP bool) (
+	*rbacv1.ClusterRole, []rbacv1.ClusterRoleBinding, []rbacv1.Role, []rbacv1.RoleBinding, []ValidationRoleRef, error) {
 	var clusterRole *rbacv1.ClusterRole
 	var clusterRoleBindings []rbacv1.ClusterRoleBinding
 	var roles []rbacv1.Role
 	var roleBindings []rbacv1.RoleBinding
+	var roleRefs []ValidationRoleRef
 
 	// ClusterRole payload
 	if clusterPermission.Spec.ClusterRole != nil {
@@ -283,12 +324,12 @@ func (r *ClusterPermissionReconciler) generateManifestWorkPayload(ctx context.Co
 		crbSubjects := getSubjects(clusterPermission.Spec.ClusterRoleBinding.Subject,
 			clusterPermission.Spec.ClusterRoleBinding.Subjects)
 		if err := r.validateSubject(ctx, crbSubjects, clusterPermission.Namespace); err != nil {
-			return nil, nil, nil, nil, err
+			return nil, nil, nil, nil, nil, err
 		}
 
 		subjects, err := r.generateSubjects(ctx, crbSubjects, clusterPermission.Namespace)
 		if err != nil {
-			return nil, nil, nil, nil, err
+			return nil, nil, nil, nil, nil, err
 		}
 
 		// default to ClusterPermission name unless using custom name
@@ -325,12 +366,12 @@ func (r *ClusterPermissionReconciler) generateManifestWorkPayload(ctx context.Co
 		for _, clusterRoleBinding := range *clusterPermission.Spec.ClusterRoleBindings {
 			crbSubjects := getSubjects(clusterRoleBinding.Subject, clusterRoleBinding.Subjects)
 			if err := r.validateSubject(ctx, crbSubjects, clusterPermission.Namespace); err != nil {
-				return nil, nil, nil, nil, err
+				return nil, nil, nil, nil, nil, err
 			}
 
 			subjects, err := r.generateSubjects(ctx, crbSubjects, clusterPermission.Namespace)
 			if err != nil {
-				return nil, nil, nil, nil, err
+				return nil, nil, nil, nil, nil, err
 			}
 
 			// default to ClusterPermission name unless using custom name
@@ -367,27 +408,27 @@ func (r *ClusterPermissionReconciler) generateManifestWorkPayload(ctx context.Co
 	if clusterPermission.Spec.Roles != nil && len(*clusterPermission.Spec.Roles) > 0 {
 		for _, role := range *clusterPermission.Spec.Roles {
 			if role.Namespace == "" && role.NamespaceSelector == nil {
-				return nil, nil, nil, nil,
+				return nil, nil, nil, nil, nil,
 					errors.New("both Role Namespace and NamespaceSelector cannot be nil and empty")
 			}
 			if role.Namespace != "" && role.NamespaceSelector != nil {
-				return nil, nil, nil, nil,
+				return nil, nil, nil, nil, nil,
 					errors.New("both Role Namespace and NamespaceSelector cannot populated at the same time")
 			}
 
 			if role.NamespaceSelector != nil {
 				labelSelector, err := metav1.LabelSelectorAsSelector(role.NamespaceSelector)
 				if err != nil {
-					return nil, nil, nil, nil, err
+					return nil, nil, nil, nil, nil, err
 				}
 
 				nsList := &corev1.NamespaceList{}
 				if err = r.Client.List(ctx, nsList, &client.ListOptions{LabelSelector: labelSelector}); err != nil {
-					return nil, nil, nil, nil, err
+					return nil, nil, nil, nil, nil, err
 				}
 
 				if nsList == nil || nsList.Items == nil && len(nsList.Items) == 0 {
-					return nil, nil, nil, nil,
+					return nil, nil, nil, nil, nil,
 						errors.New("unable to find any Namespace using NamespaceSelector")
 				}
 
@@ -425,37 +466,37 @@ func (r *ClusterPermissionReconciler) generateManifestWorkPayload(ctx context.Co
 		for _, roleBinding := range *clusterPermission.Spec.RoleBindings {
 			rbSubjects := getSubjects(roleBinding.Subject, roleBinding.Subjects)
 			if roleBinding.Namespace == "" && roleBinding.NamespaceSelector == nil {
-				return nil, nil, nil, nil,
+				return nil, nil, nil, nil, nil,
 					errors.New("both RoleBinding Namespace and NamespaceSelector cannot be nil and empty")
 			}
 			if roleBinding.Namespace != "" && roleBinding.NamespaceSelector != nil {
-				return nil, nil, nil, nil,
+				return nil, nil, nil, nil, nil,
 					errors.New("both RoleBinding Namespace and NamespaceSelector cannot populated at the same time")
 			}
 			if roleBinding.NamespaceSelector != nil {
 				labelSelector, err := metav1.LabelSelectorAsSelector(roleBinding.NamespaceSelector)
 				if err != nil {
-					return nil, nil, nil, nil, err
+					return nil, nil, nil, nil, nil, err
 				}
 
 				nsList := &corev1.NamespaceList{}
 				if err = r.Client.List(ctx, nsList, &client.ListOptions{LabelSelector: labelSelector}); err != nil {
-					return nil, nil, nil, nil, err
+					return nil, nil, nil, nil, nil, err
 				}
 
 				if nsList == nil || nsList.Items == nil && len(nsList.Items) == 0 {
-					return nil, nil, nil, nil,
+					return nil, nil, nil, nil, nil,
 						errors.New("unable to find any Namespace using NamespaceSelector")
 				}
 
 				for _, ns := range nsList.Items {
 					if err := r.validateSubject(ctx, rbSubjects, clusterPermission.Namespace); err != nil {
-						return nil, nil, nil, nil, err
+						return nil, nil, nil, nil, nil, err
 					}
 
 					subjects, err := r.generateSubjects(ctx, rbSubjects, clusterPermission.Namespace)
 					if err != nil {
-						return nil, nil, nil, nil, err
+						return nil, nil, nil, nil, nil, err
 					}
 
 					roleBindings = append(roleBindings, rbacv1.RoleBinding{
@@ -477,12 +518,12 @@ func (r *ClusterPermissionReconciler) generateManifestWorkPayload(ctx context.Co
 				}
 			} else if roleBinding.Namespace != "" {
 				if err := r.validateSubject(ctx, rbSubjects, clusterPermission.Namespace); err != nil {
-					return nil, nil, nil, nil, err
+					return nil, nil, nil, nil, nil, err
 				}
 
 				subjects, err := r.generateSubjects(ctx, rbSubjects, clusterPermission.Namespace)
 				if err != nil {
-					return nil, nil, nil, nil, err
+					return nil, nil, nil, nil, nil, err
 				}
 
 				roleBindingName := clusterPermission.Name
@@ -502,10 +543,10 @@ func (r *ClusterPermissionReconciler) generateManifestWorkPayload(ctx context.Co
 						Name:     roleBinding.RoleRef.Name,
 					}
 				} else if roleBinding.RoleRef.APIGroup == "" && roleBinding.RoleRef.Name != "" {
-					return nil, nil, nil, nil,
+					return nil, nil, nil, nil, nil,
 						errors.New("the RoleBinding for Namespace " + roleBinding.Namespace + " missing APIGroup for the RoleRef")
 				} else if roleBinding.RoleRef.APIGroup != "" && roleBinding.RoleRef.Name == "" {
-					return nil, nil, nil, nil,
+					return nil, nil, nil, nil, nil,
 						errors.New("the RoleBinding for Namespace " + roleBinding.Namespace + " missing Name for the RoleRef")
 				}
 
@@ -525,5 +566,91 @@ func (r *ClusterPermissionReconciler) generateManifestWorkPayload(ctx context.Co
 		}
 	}
 
-	return clusterRole, clusterRoleBindings, roles, roleBindings, nil
+	if validateCP {
+		roleRefs = extractRoleReferencesForValidation(clusterPermission)
+	}
+
+	return clusterRole, clusterRoleBindings, roles, roleBindings, roleRefs, nil
+}
+
+// processValidationResults processes the feedback from validation ManifestWork and updates status conditions
+func (r *ClusterPermissionReconciler) processValidationResults(ctx context.Context, clusterPermission *cpv1alpha1.ClusterPermission, mw *workv1.ManifestWork) error {
+	log := log.FromContext(ctx)
+
+	// Analyze the status feedback to determine which roles are missing
+	var missingRoles []string
+	var missingClusterRoles []string
+
+	// Check feedback from ManifestWork status
+	for _, status := range mw.Status.ResourceStatus.Manifests {
+		availableCondition := meta.FindStatusCondition(status.Conditions, "Available")
+		if availableCondition != nil && availableCondition.Status == "True" {
+			continue
+		}
+
+		if status.ResourceMeta.Kind == "Role" {
+			missingRoles = append(missingRoles, status.ResourceMeta.Namespace+"/"+status.ResourceMeta.Name)
+		} else if status.ResourceMeta.Kind == "ClusterRole" {
+			missingClusterRoles = append(missingClusterRoles, status.ResourceMeta.Name)
+		}
+	}
+
+	// Update status conditions based on validation results
+	var conditions []*metav1.Condition
+
+	if len(missingRoles) > 0 {
+		conditions = append(conditions, &metav1.Condition{
+			Type:    cpv1alpha1.ConditionTypeValidateRolesExist,
+			Status:  metav1.ConditionFalse,
+			Reason:  "RolesNotFound",
+			Message: "The following roles were not found: " + joinStrings(missingRoles, ", "),
+		})
+	} else {
+		conditions = append(conditions, &metav1.Condition{
+			Type:    cpv1alpha1.ConditionTypeValidateRolesExist,
+			Status:  metav1.ConditionTrue,
+			Reason:  "AllRolesFound",
+			Message: "All referenced roles were found",
+		})
+	}
+
+	if len(missingClusterRoles) > 0 {
+		conditions = append(conditions, &metav1.Condition{
+			Type:    cpv1alpha1.ConditionTypeValidateClusterRolesExist,
+			Status:  metav1.ConditionFalse,
+			Reason:  "ClusterRolesNotFound",
+			Message: "The following cluster roles were not found: " + joinStrings(missingClusterRoles, ", "),
+		})
+	} else {
+		conditions = append(conditions, &metav1.Condition{
+			Type:    cpv1alpha1.ConditionTypeValidateClusterRolesExist,
+			Status:  metav1.ConditionTrue,
+			Reason:  "AllClusterRolesFound",
+			Message: "All referenced cluster roles were found",
+		})
+	}
+
+	// Update all conditions
+	if err := r.updateStatus(ctx, clusterPermission, conditions); err != nil {
+		log.Error(err, "failed to update validation status conditions")
+		return err
+	}
+
+	return nil
+}
+
+// joinStrings joins a slice of strings with a separator
+func joinStrings(strings []string, separator string) string {
+	if len(strings) == 0 {
+		return ""
+	}
+	if len(strings) == 1 {
+		return strings[0]
+	}
+
+	result := strings[0]
+	for i := 1; i < len(strings); i++ {
+		result += separator + strings[i]
+	}
+	return result
 }

@@ -138,6 +138,17 @@ var _ = Describe("ClusterPermission controller", func() {
 			}).Should(BeTrue())
 
 			By("Updating the ClusterPermission")
+			// Hack since Ginkgo is not updating the status of the ManifestWork
+			mw.Status.Conditions = []metav1.Condition{
+				{
+					Type:               "Applied",
+					Status:             "True",
+					LastTransitionTime: metav1.Now(),
+					Reason:             "Applied",
+					Message:            "ManifestWork applied successfully",
+				},
+			}
+			Expect(k8sClient.Status().Update(ctx, &mw)).Should(Succeed())
 			time.Sleep(3 * time.Second)
 			oldRv := mw.GetResourceVersion()
 			Expect(k8sClient.Get(ctx, mbacKey, &clusterPermission)).Should(Succeed())
@@ -661,7 +672,7 @@ var _ = Describe("ClusterPermission controller", func() {
 			}))).Should(Equal(1))
 
 			By("Create ClusterPermission with ClusterRoleBinding that has no subject or subjects")
-			clusterPermission = cpv1alpha1.ClusterPermission{
+			clusterPermissionMissingSubjectSubjects := cpv1alpha1.ClusterPermission{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "clusterpermission-no-subject-subjects",
 					Namespace: clusterName,
@@ -673,9 +684,58 @@ var _ = Describe("ClusterPermission controller", func() {
 							Kind:     "ClusterRole",
 							Name:     "argocd-application-controller-3",
 						},
+						Subjects: []rbacv1.Subject{},
 					},
 				},
 			}
+
+			Expect(k8sClient.Create(ctx, &clusterPermissionMissingSubjectSubjects)).Should(Succeed())
+
+			By("Create ClusterPermission with Role and ClusterRole that doesn't exist validate should have error status")
+			clusterPermissionRoleClusterRoleNotExistValidate := cpv1alpha1.ClusterPermission{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "clusterpermission-role-clusterrole-not-exist",
+					Namespace: clusterName,
+				},
+				Spec: cpv1alpha1.ClusterPermissionSpec{
+					Validate: &[]bool{true}[0],
+					RoleBindings: &[]cpv1alpha1.RoleBinding{
+						{
+							Namespace: "default",
+							Name:      "default",
+							RoleRef: cpv1alpha1.RoleRef{
+								APIGroup: "rbac.authorization.k8s.io",
+								Kind:     "ClusterRole",
+								Name:     "argocd-application-controller-1",
+							},
+							Subjects: []rbacv1.Subject{
+								{
+									Namespace: "openshift-gitops",
+									Kind:      "ServiceAccount",
+									Name:      "sa-sample-existing",
+								},
+							},
+						},
+					},
+					ClusterRoleBinding: &cpv1alpha1.ClusterRoleBinding{
+						Name: "crb-cluster1-argo-app-con-3",
+						RoleRef: &rbacv1.RoleRef{
+							APIGroup: "rbac.authorization.k8s.io",
+							Kind:     "ClusterRole",
+							Name:     "argocd-application-controller-3",
+						},
+						Subjects: []rbacv1.Subject{
+							{
+								Namespace: "rbac.authorization.k8s.io",
+								Kind:      "Group",
+								Name:      "group1",
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, &clusterPermissionRoleClusterRoleNotExistValidate)).Should(Succeed())
+
 		})
 	})
 })
