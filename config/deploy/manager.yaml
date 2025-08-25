@@ -56,7 +56,7 @@ spec:
         image: quay.io/open-cluster-management/cluster-permission:latest
         imagePullPolicy: IfNotPresent
         command:
-        - /usr/local/bin/multiclusterroleassignment
+        - /usr/local/bin/multicluster-role-assignment
         env:
         - name: WATCH_NAMESPACE
         - name: POD_NAME
