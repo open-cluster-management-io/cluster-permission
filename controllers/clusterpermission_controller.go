@@ -42,7 +42,6 @@ import (
 	msacommon "open-cluster-management.io/managed-serviceaccount/pkg/common"
 )
 
-const VALIDATION_MW_RETRY_COUNT = 10
 const VALIDATION_MW_RETRY_INTERVAL = 10 * time.Second
 
 // ClusterPermissionReconciler reconciles a ClusterPermission object
@@ -92,11 +91,13 @@ func (r *ClusterPermissionReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		(clusterPermission.Spec.RoleBindings == nil || len(*clusterPermission.Spec.RoleBindings) == 0) {
 		log.Info("no bindings defined for ClusterPermission")
 
-		err := r.updateStatus(ctx, &clusterPermission, &metav1.Condition{
-			Type:    cpv1alpha1.ConditionTypeValidation,
-			Status:  metav1.ConditionFalse,
-			Reason:  "FailedValidationNoBindingsDefined",
-			Message: "no bindings defined",
+		err := r.updateStatus(ctx, &clusterPermission, []*metav1.Condition{
+			{
+				Type:    cpv1alpha1.ConditionTypeValidation,
+				Status:  metav1.ConditionFalse,
+				Reason:  "FailedValidationNoBindingsDefined",
+				Message: "no bindings defined",
+			},
 		})
 
 		return ctrl.Result{}, err
@@ -108,11 +109,13 @@ func (r *ClusterPermissionReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		if apierrors.IsNotFound(err) {
 			log.Info("not found ManagedCluster")
 
-			err := r.updateStatus(ctx, &clusterPermission, &metav1.Condition{
-				Type:    cpv1alpha1.ConditionTypeValidation,
-				Status:  metav1.ConditionFalse,
-				Reason:  "FailedValidationNotInManagedClusterNamespace",
-				Message: "namespace value is not a managed cluster",
+			err := r.updateStatus(ctx, &clusterPermission, []*metav1.Condition{
+				{
+					Type:    cpv1alpha1.ConditionTypeValidation,
+					Status:  metav1.ConditionFalse,
+					Reason:  "FailedValidationNotInManagedClusterNamespace",
+					Message: "namespace value is not a managed cluster",
+				},
 			})
 
 			return ctrl.Result{}, err
@@ -136,11 +139,13 @@ func (r *ClusterPermissionReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	if err != nil {
 		log.Error(err, "failed to generate payload")
 
-		errStatus := r.updateStatus(ctx, &clusterPermission, &metav1.Condition{
-			Type:    cpv1alpha1.ConditionTypeAppliedRBACManifestWork,
-			Status:  metav1.ConditionFalse,
-			Reason:  "FailedBuildManifestWork",
-			Message: err.Error(),
+		errStatus := r.updateStatus(ctx, &clusterPermission, []*metav1.Condition{
+			{
+				Type:    cpv1alpha1.ConditionTypeAppliedRBACManifestWork,
+				Status:  metav1.ConditionFalse,
+				Reason:  "FailedBuildManifestWork",
+				Message: err.Error(),
+			},
 		})
 
 		return ctrl.Result{}, errStatus
@@ -160,15 +165,12 @@ func (r *ClusterPermissionReconciler) Reconcile(ctx context.Context, req ctrl.Re
 			return ctrl.Result{}, err
 		}
 	} else if err == nil {
-		mwAppliedCondition := meta.FindStatusCondition(mw.Status.Conditions, "Applied")
-		if mwAppliedCondition != nil && mwAppliedCondition.Status == "True" {
-			log.Info("updating ManifestWork")
-			mw.Spec = manifestWork.Spec
-			err = r.Client.Update(ctx, &mw)
-			if err != nil {
-				log.Error(err, "unable to update ManifestWork")
-				return ctrl.Result{}, err
-			}
+		log.Info("updating ManifestWork")
+		mw.Spec = manifestWork.Spec
+		err = r.Client.Update(ctx, &mw)
+		if err != nil {
+			log.Error(err, "unable to update ManifestWork")
+			return ctrl.Result{}, err
 		}
 	} else {
 		log.Error(err, "unable to fetch ManifestWork")
@@ -182,12 +184,14 @@ func (r *ClusterPermissionReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		return ctrl.Result{}, err
 	}
 
-	err = r.updateStatus(ctx, &clusterPermission, &metav1.Condition{
-		Type:   cpv1alpha1.ConditionTypeAppliedRBACManifestWork,
-		Status: metav1.ConditionTrue,
-		Reason: cpv1alpha1.ConditionTypeAppliedRBACManifestWork,
-		Message: "Run the following command to check the ManifestWork status:\n" +
-			"kubectl -n " + clusterPermission.Namespace + " get ManifestWork " + mwName + " -o yaml",
+	err = r.updateStatus(ctx, &clusterPermission, []*metav1.Condition{
+		{
+			Type:   cpv1alpha1.ConditionTypeAppliedRBACManifestWork,
+			Status: metav1.ConditionTrue,
+			Reason: cpv1alpha1.ConditionTypeAppliedRBACManifestWork,
+			Message: "Run the following command to check the ManifestWork status:\n" +
+				"kubectl -n " + clusterPermission.Namespace + " get ManifestWork " + mwName + " -o yaml",
+		},
 	})
 
 	if validateCP {
@@ -206,10 +210,13 @@ func (r *ClusterPermissionReconciler) Reconcile(ctx context.Context, req ctrl.Re
 // updateStatus will update the status of the ClusterPermission if there are changes to the status
 // after applying the given condition. It will also retry on conflict error.
 func (r *ClusterPermissionReconciler) updateStatus(ctx context.Context,
-	clusterPermission *cpv1alpha1.ClusterPermission, cond *metav1.Condition) error {
+	clusterPermission *cpv1alpha1.ClusterPermission, conds []*metav1.Condition) error {
 	return retry.RetryOnConflict(retry.DefaultBackoff, func() error {
 		newStatus := clusterPermission.Status.DeepCopy()
-		meta.SetStatusCondition(&newStatus.Conditions, *cond)
+		for _, cond := range conds {
+			meta.SetStatusCondition(&newStatus.Conditions, *cond)
+		}
+
 		if equality.Semantic.DeepEqual(clusterPermission.Status, newStatus) {
 			return nil
 		}
@@ -577,7 +584,7 @@ func (r *ClusterPermissionReconciler) processValidationResults(ctx context.Conte
 	// Check feedback from ManifestWork status
 	for _, status := range mw.Status.ResourceStatus.Manifests {
 		availableCondition := meta.FindStatusCondition(status.Conditions, "Available")
-		if availableCondition.Status == "True" {
+		if availableCondition != nil && availableCondition.Status == "True" {
 			continue
 		}
 
@@ -624,10 +631,9 @@ func (r *ClusterPermissionReconciler) processValidationResults(ctx context.Conte
 	}
 
 	// Update all conditions
-	for _, condition := range conditions {
-		if err := r.updateStatus(ctx, clusterPermission, condition); err != nil {
-			log.Error(err, "failed to update validation status condition", "type", condition.Type)
-		}
+	if err := r.updateStatus(ctx, clusterPermission, conditions); err != nil {
+		log.Error(err, "failed to update validation status conditions")
+		return err
 	}
 
 	return nil
