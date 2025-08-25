@@ -13,8 +13,9 @@ ENV OPERATOR=/usr/local/bin/cluster-permission \
     USER_UID=1001 \
     USER_NAME=cluster-permission
 
-# install operator binary
+# install operator binaries
 COPY --from=builder /go/src/github.com/open-cluster-management-io/cluster-permission/bin/cluster-permission /usr/local/bin/cluster-permission
+COPY --from=builder /go/src/github.com/open-cluster-management-io/cluster-permission/bin/multicluster-role-assignment /usr/local/bin/multicluster-role-assignment
 
 COPY build/bin /usr/local/bin
 RUN  /usr/local/bin/user_setup
