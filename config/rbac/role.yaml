@@ -24,6 +24,7 @@ rules:
   - cluster.open-cluster-management.io
   resources:
   - managedclusters
+  - managedclustersets
   verbs:
   - get
   - list

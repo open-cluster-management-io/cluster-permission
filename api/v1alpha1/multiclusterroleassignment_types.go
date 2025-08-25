@@ -17,6 +17,7 @@ limitations under the License.
 package v1alpha1
 
 import (
+	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -25,27 +26,14 @@ import (
 
 // MulticlusterRoleAssignmentSpec defines the desired state of MulticlusterRoleAssignment.
 type MulticlusterRoleAssignmentSpec struct {
-	// Subject defines the user or group for all role assignments.
+	// Subject defines the user, group, or service account for all role assignments.
 	// +kubebuilder:validation:Required
-	Subject Subject `json:"subject"`
+	Subject rbacv1.Subject `json:"subject"`
 
 	// RoleAssignments defines the list of role assignments for different roles, namespaces, and cluster sets.
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinItems=1
 	RoleAssignments []RoleAssignment `json:"roleAssignments"`
-}
-
-// Subject defines the user or group for all role assignments.
-type Subject struct {
-	// Kind defines the subject kind (User or Group).
-	// +kubebuilder:validation:Enum=User;Group
-	// +kubebuilder:validation:Required
-	Kind string `json:"kind"`
-
-	// Name defines the subject name.
-	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:MinLength=1
-	Name string `json:"name"`
 }
 
 // RoleAssignment defines a cluster role assignment to specific namespaces and cluster sets.
