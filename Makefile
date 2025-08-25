@@ -70,12 +70,26 @@ deps:
 pre-build: deps manifests generate fmt vet
 
 .PHONY: build
-build:
-	go build -o bin/cluster-permission main.go
+build: build-cluster-permission build-multicluster-role-assignment
+
+.PHONY: build-cluster-permission
+build-cluster-permission:
+	go build -o bin/cluster-permission cmd/clusterpermission/main.go
+
+.PHONY: build-multicluster-role-assignment
+build-multicluster-role-assignment:
+	go build -o bin/multicluster-role-assignment cmd/multiclusterroleassignment/main.go
 
 .PHONY: run
-run: manifests generate fmt vet ## Run a controller from your host.
-	go run ./main.go
+run: run-cluster-permission
+
+.PHONY: run-cluster-permission
+run-cluster-permission: manifests generate fmt vet
+	go run ./cmd/clusterpermission/main.go
+
+.PHONY: run-multicluster-role-assignment
+run-multicluster-role-assignment: manifests generate fmt vet
+	go run ./cmd/multiclusterroleassignment/main.go
 
 # If you wish built the manager image targeting other platforms you can use the --platform flag.
 # (i.e. docker build --platform linux/arm64 ). However, you must enable docker buildKit for it.

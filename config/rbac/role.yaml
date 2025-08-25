@@ -24,6 +24,7 @@ rules:
   - cluster.open-cluster-management.io
   resources:
   - managedclusters
+  - managedclustersets
   verbs:
   - get
   - list
@@ -32,6 +33,7 @@ rules:
   - rbac.open-cluster-management.io
   resources:
   - clusterpermissions
+  - multiclusterroleassignments
   verbs:
   - create
   - delete
@@ -44,12 +46,14 @@ rules:
   - rbac.open-cluster-management.io
   resources:
   - clusterpermissions/finalizers
+  - multiclusterroleassignments/finalizers
   verbs:
   - update
 - apiGroups:
   - rbac.open-cluster-management.io
   resources:
   - clusterpermissions/status
+  - multiclusterroleassignments/status
   verbs:
   - get
   - patch

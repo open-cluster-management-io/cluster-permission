@@ -17,4 +17,13 @@ resources:
   kind: ClusterPermission
   path: open-cluster-management.io/cluster-permission/api/v1alpha1
   version: v1alpha1
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: open-cluster-management.io
+  group: rbac.open-cluster-management.io
+  kind: MulticlusterRoleAssignment
+  path: open-cluster-management.io/cluster-permission/api/v1alpha1
+  version: v1alpha1
 version: "3"
