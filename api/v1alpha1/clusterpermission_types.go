@@ -73,13 +73,13 @@ type ClusterRoleBinding struct {
 	// Besides the typical subject for a binding, a ManagedServiceAccount can be used as a subject as well.
 	// If both subject and subjects exist then only subjects will be used.
 	// +optional
-	Subject rbacv1.Subject `json:"subject"`
+	Subject rbacv1.Subject `json:"subject,omitempty"`
 
 	// Subjects contains an array of references to objects or user identities a ClusterPermission binding applies to.
 	// Besides the typical subject for a binding, a ManagedServiceAccount can be used as a subject as well.
 	// If both subject and subjects exist then only subjects will be used.
 	// +optional
-	Subjects []rbacv1.Subject `json:"subjects"`
+	Subjects []rbacv1.Subject `json:"subjects,omitempty"`
 
 	// Name of the ClusterRoleBinding if a name different than the ClusterPermission name is used
 	// +optional
