@@ -19,6 +19,7 @@ package controllers
 import (
 	"context"
 	"errors"
+	"slices"
 	"time"
 
 	"k8s.io/apimachinery/pkg/api/equality"
@@ -29,8 +30,13 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/event"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -55,6 +61,36 @@ func (r *ClusterPermissionReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&cpv1alpha1.ClusterPermission{}).
 		Owns(&workv1.ManifestWork{}).
+		Watches(&addonv1alpha1.ManagedClusterAddOn{},
+			r.managedClusterAddOnEventHandler(),
+			builder.WithPredicates(predicate.Funcs{
+				CreateFunc: func(e event.CreateEvent) bool {
+					return false // Don't process Create events
+				},
+				UpdateFunc: func(e event.UpdateEvent) bool {
+					// Only process Update events for managed-serviceaccount addon when status.namespace changes
+					oldAddon, oldOk := e.ObjectOld.(*addonv1alpha1.ManagedClusterAddOn)
+					newAddon, newOk := e.ObjectNew.(*addonv1alpha1.ManagedClusterAddOn)
+
+					if !oldOk || !newOk {
+						return false
+					}
+
+					// Only process if this is the managed-serviceaccount addon
+					if newAddon.Name != msacommon.AddonName {
+						return false
+					}
+
+					// Only process if status.namespace has changed
+					return oldAddon.Status.Namespace != newAddon.Status.Namespace
+				},
+				DeleteFunc: func(e event.DeleteEvent) bool {
+					return false // Don't process Delete events
+				},
+				GenericFunc: func(e event.GenericEvent) bool {
+					return false // Don't process Generic events
+				},
+			})).
 		Complete(r)
 }
 
@@ -588,9 +624,10 @@ func (r *ClusterPermissionReconciler) processValidationResults(ctx context.Conte
 			continue
 		}
 
-		if status.ResourceMeta.Kind == "Role" {
+		switch status.ResourceMeta.Kind {
+		case "Role":
 			missingRoles = append(missingRoles, status.ResourceMeta.Namespace+"/"+status.ResourceMeta.Name)
-		} else if status.ResourceMeta.Kind == "ClusterRole" {
+		case "ClusterRole":
 			missingClusterRoles = append(missingClusterRoles, status.ResourceMeta.Name)
 		}
 	}
@@ -653,4 +690,89 @@ func joinStrings(strings []string, separator string) string {
 		result += separator + strings[i]
 	}
 	return result
+}
+
+// managedClusterAddOnEventHandler returns an event handler that reconciles ClusterPermissions
+// when a ManagedClusterAddOn's status.namespace changes
+func (r *ClusterPermissionReconciler) managedClusterAddOnEventHandler() handler.EventHandler {
+	return handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []reconcile.Request {
+		log := log.FromContext(ctx)
+
+		addon, ok := obj.(*addonv1alpha1.ManagedClusterAddOn)
+		if !ok {
+			log.Error(nil, "object is not a ManagedClusterAddOn", "object", obj)
+			return []reconcile.Request{}
+		}
+
+		// Find all ClusterPermissions in this addon's namespace that have ManagedServiceAccount subjects
+		var clusterPermissions cpv1alpha1.ClusterPermissionList
+		err := r.List(ctx, &clusterPermissions, &client.ListOptions{
+			Namespace: addon.Namespace,
+		})
+		if err != nil {
+			log.Error(err, "failed to list ClusterPermissions", "namespace", addon.Namespace)
+			return []reconcile.Request{}
+		}
+
+		var requests []reconcile.Request
+		for _, cp := range clusterPermissions.Items {
+			if r.clusterPermissionUsesManagedServiceAccount(&cp) {
+				requests = append(requests, reconcile.Request{
+					NamespacedName: types.NamespacedName{
+						Name:      cp.Name,
+						Namespace: cp.Namespace,
+					},
+				})
+			}
+		}
+
+		log.Info("ManagedClusterAddOn status.namespace changed, reconciling ClusterPermissions",
+			"addon", addon.Name, "namespace", addon.Namespace, "requests", len(requests))
+
+		return requests
+	})
+}
+
+// clusterPermissionUsesManagedServiceAccount checks if a ClusterPermission uses ManagedServiceAccount subjects
+func (r *ClusterPermissionReconciler) clusterPermissionUsesManagedServiceAccount(cp *cpv1alpha1.ClusterPermission) bool {
+	// Check ClusterRoleBinding
+	if cp.Spec.ClusterRoleBinding != nil {
+		if r.subjectIsManagedServiceAccount(cp.Spec.ClusterRoleBinding.Subject) {
+			return true
+		}
+		if slices.ContainsFunc(cp.Spec.ClusterRoleBinding.Subjects, r.subjectIsManagedServiceAccount) {
+			return true
+		}
+	}
+
+	// Check ClusterRoleBindings (plural)
+	if cp.Spec.ClusterRoleBindings != nil {
+		for _, crb := range *cp.Spec.ClusterRoleBindings {
+			if r.subjectIsManagedServiceAccount(crb.Subject) {
+				return true
+			}
+			if slices.ContainsFunc(crb.Subjects, r.subjectIsManagedServiceAccount) {
+				return true
+			}
+		}
+	}
+
+	// Check RoleBindings
+	if cp.Spec.RoleBindings != nil {
+		for _, rb := range *cp.Spec.RoleBindings {
+			if r.subjectIsManagedServiceAccount(rb.Subject) {
+				return true
+			}
+			if slices.ContainsFunc(rb.Subjects, r.subjectIsManagedServiceAccount) {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+// subjectIsManagedServiceAccount checks if a subject is a ManagedServiceAccount
+func (r *ClusterPermissionReconciler) subjectIsManagedServiceAccount(subject rbacv1.Subject) bool {
+	return subject.APIGroup == msav1beta1.GroupVersion.Group && subject.Kind == "ManagedServiceAccount"
 }

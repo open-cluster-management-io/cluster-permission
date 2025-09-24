@@ -26,9 +26,11 @@ import (
 	. "github.com/onsi/gomega"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
@@ -858,6 +860,879 @@ func TestGenerateSubjects(t *testing.T) {
 
 			if !reflect.DeepEqual(subjects[0], c.expectedSubject) {
 				t.Errorf("expected subject %v, got %v", c.expectedSubject, subjects[0])
+			}
+		})
+	}
+}
+
+func TestProcessValidationResults(t *testing.T) {
+	cases := []struct {
+		name                          string
+		manifestWork                  *workv1.ManifestWork
+		expectedRolesCondition        *metav1.Condition
+		expectedClusterRolesCondition *metav1.Condition
+		expectError                   bool
+	}{
+		{
+			name: "all roles and cluster roles found",
+			manifestWork: &workv1.ManifestWork{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-mw",
+					Namespace: "cluster1",
+				},
+				Status: workv1.ManifestWorkStatus{
+					ResourceStatus: workv1.ManifestResourceStatus{
+						Manifests: []workv1.ManifestCondition{
+							{
+								ResourceMeta: workv1.ManifestResourceMeta{
+									Kind:      "Role",
+									Name:      "test-role",
+									Namespace: "default",
+								},
+								Conditions: []metav1.Condition{
+									{
+										Type:   "Available",
+										Status: metav1.ConditionTrue,
+									},
+								},
+							},
+							{
+								ResourceMeta: workv1.ManifestResourceMeta{
+									Kind: "ClusterRole",
+									Name: "test-cluster-role",
+								},
+								Conditions: []metav1.Condition{
+									{
+										Type:   "Available",
+										Status: metav1.ConditionTrue,
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			expectedRolesCondition: &metav1.Condition{
+				Type:    cpv1alpha1.ConditionTypeValidateRolesExist,
+				Status:  metav1.ConditionTrue,
+				Reason:  "AllRolesFound",
+				Message: "All referenced roles were found",
+			},
+			expectedClusterRolesCondition: &metav1.Condition{
+				Type:    cpv1alpha1.ConditionTypeValidateClusterRolesExist,
+				Status:  metav1.ConditionTrue,
+				Reason:  "AllClusterRolesFound",
+				Message: "All referenced cluster roles were found",
+			},
+		},
+		{
+			name: "some roles missing",
+			manifestWork: &workv1.ManifestWork{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-mw",
+					Namespace: "cluster1",
+				},
+				Status: workv1.ManifestWorkStatus{
+					ResourceStatus: workv1.ManifestResourceStatus{
+						Manifests: []workv1.ManifestCondition{
+							{
+								ResourceMeta: workv1.ManifestResourceMeta{
+									Kind:      "Role",
+									Name:      "missing-role",
+									Namespace: "default",
+								},
+								Conditions: []metav1.Condition{
+									{
+										Type:   "Available",
+										Status: metav1.ConditionFalse,
+									},
+								},
+							},
+							{
+								ResourceMeta: workv1.ManifestResourceMeta{
+									Kind:      "Role",
+									Name:      "another-missing-role",
+									Namespace: "kube-system",
+								},
+								Conditions: []metav1.Condition{
+									{
+										Type:   "Available",
+										Status: metav1.ConditionFalse,
+									},
+								},
+							},
+							{
+								ResourceMeta: workv1.ManifestResourceMeta{
+									Kind: "ClusterRole",
+									Name: "found-cluster-role",
+								},
+								Conditions: []metav1.Condition{
+									{
+										Type:   "Available",
+										Status: metav1.ConditionTrue,
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			expectedRolesCondition: &metav1.Condition{
+				Type:    cpv1alpha1.ConditionTypeValidateRolesExist,
+				Status:  metav1.ConditionFalse,
+				Reason:  "RolesNotFound",
+				Message: "The following roles were not found: default/missing-role, kube-system/another-missing-role",
+			},
+			expectedClusterRolesCondition: &metav1.Condition{
+				Type:    cpv1alpha1.ConditionTypeValidateClusterRolesExist,
+				Status:  metav1.ConditionTrue,
+				Reason:  "AllClusterRolesFound",
+				Message: "All referenced cluster roles were found",
+			},
+		},
+		{
+			name: "some cluster roles missing",
+			manifestWork: &workv1.ManifestWork{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-mw",
+					Namespace: "cluster1",
+				},
+				Status: workv1.ManifestWorkStatus{
+					ResourceStatus: workv1.ManifestResourceStatus{
+						Manifests: []workv1.ManifestCondition{
+							{
+								ResourceMeta: workv1.ManifestResourceMeta{
+									Kind:      "Role",
+									Name:      "found-role",
+									Namespace: "default",
+								},
+								Conditions: []metav1.Condition{
+									{
+										Type:   "Available",
+										Status: metav1.ConditionTrue,
+									},
+								},
+							},
+							{
+								ResourceMeta: workv1.ManifestResourceMeta{
+									Kind: "ClusterRole",
+									Name: "missing-cluster-role",
+								},
+								Conditions: []metav1.Condition{
+									{
+										Type:   "Available",
+										Status: metav1.ConditionFalse,
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			expectedRolesCondition: &metav1.Condition{
+				Type:    cpv1alpha1.ConditionTypeValidateRolesExist,
+				Status:  metav1.ConditionTrue,
+				Reason:  "AllRolesFound",
+				Message: "All referenced roles were found",
+			},
+			expectedClusterRolesCondition: &metav1.Condition{
+				Type:    cpv1alpha1.ConditionTypeValidateClusterRolesExist,
+				Status:  metav1.ConditionFalse,
+				Reason:  "ClusterRolesNotFound",
+				Message: "The following cluster roles were not found: missing-cluster-role",
+			},
+		},
+		{
+			name: "both roles and cluster roles missing",
+			manifestWork: &workv1.ManifestWork{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-mw",
+					Namespace: "cluster1",
+				},
+				Status: workv1.ManifestWorkStatus{
+					ResourceStatus: workv1.ManifestResourceStatus{
+						Manifests: []workv1.ManifestCondition{
+							{
+								ResourceMeta: workv1.ManifestResourceMeta{
+									Kind:      "Role",
+									Name:      "missing-role",
+									Namespace: "default",
+								},
+								Conditions: []metav1.Condition{
+									{
+										Type:   "Available",
+										Status: metav1.ConditionFalse,
+									},
+								},
+							},
+							{
+								ResourceMeta: workv1.ManifestResourceMeta{
+									Kind: "ClusterRole",
+									Name: "missing-cluster-role",
+								},
+								Conditions: []metav1.Condition{
+									{
+										Type:   "Available",
+										Status: metav1.ConditionFalse,
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			expectedRolesCondition: &metav1.Condition{
+				Type:    cpv1alpha1.ConditionTypeValidateRolesExist,
+				Status:  metav1.ConditionFalse,
+				Reason:  "RolesNotFound",
+				Message: "The following roles were not found: default/missing-role",
+			},
+			expectedClusterRolesCondition: &metav1.Condition{
+				Type:    cpv1alpha1.ConditionTypeValidateClusterRolesExist,
+				Status:  metav1.ConditionFalse,
+				Reason:  "ClusterRolesNotFound",
+				Message: "The following cluster roles were not found: missing-cluster-role",
+			},
+		},
+		{
+			name: "no available condition means missing",
+			manifestWork: &workv1.ManifestWork{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-mw",
+					Namespace: "cluster1",
+				},
+				Status: workv1.ManifestWorkStatus{
+					ResourceStatus: workv1.ManifestResourceStatus{
+						Manifests: []workv1.ManifestCondition{
+							{
+								ResourceMeta: workv1.ManifestResourceMeta{
+									Kind:      "Role",
+									Name:      "no-condition-role",
+									Namespace: "default",
+								},
+								Conditions: []metav1.Condition{},
+							},
+							{
+								ResourceMeta: workv1.ManifestResourceMeta{
+									Kind: "ClusterRole",
+									Name: "no-condition-cluster-role",
+								},
+								Conditions: []metav1.Condition{},
+							},
+						},
+					},
+				},
+			},
+			expectedRolesCondition: &metav1.Condition{
+				Type:    cpv1alpha1.ConditionTypeValidateRolesExist,
+				Status:  metav1.ConditionFalse,
+				Reason:  "RolesNotFound",
+				Message: "The following roles were not found: default/no-condition-role",
+			},
+			expectedClusterRolesCondition: &metav1.Condition{
+				Type:    cpv1alpha1.ConditionTypeValidateClusterRolesExist,
+				Status:  metav1.ConditionFalse,
+				Reason:  "ClusterRolesNotFound",
+				Message: "The following cluster roles were not found: no-condition-cluster-role",
+			},
+		},
+		{
+			name: "empty manifest work status",
+			manifestWork: &workv1.ManifestWork{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-mw",
+					Namespace: "cluster1",
+				},
+				Status: workv1.ManifestWorkStatus{
+					ResourceStatus: workv1.ManifestResourceStatus{
+						Manifests: []workv1.ManifestCondition{},
+					},
+				},
+			},
+			expectedRolesCondition: &metav1.Condition{
+				Type:    cpv1alpha1.ConditionTypeValidateRolesExist,
+				Status:  metav1.ConditionTrue,
+				Reason:  "AllRolesFound",
+				Message: "All referenced roles were found",
+			},
+			expectedClusterRolesCondition: &metav1.Condition{
+				Type:    cpv1alpha1.ConditionTypeValidateClusterRolesExist,
+				Status:  metav1.ConditionTrue,
+				Reason:  "AllClusterRolesFound",
+				Message: "All referenced cluster roles were found",
+			},
+		},
+		{
+			name: "mixed resource types including non-role resources",
+			manifestWork: &workv1.ManifestWork{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-mw",
+					Namespace: "cluster1",
+				},
+				Status: workv1.ManifestWorkStatus{
+					ResourceStatus: workv1.ManifestResourceStatus{
+						Manifests: []workv1.ManifestCondition{
+							{
+								ResourceMeta: workv1.ManifestResourceMeta{
+									Kind:      "Deployment",
+									Name:      "test-deployment",
+									Namespace: "default",
+								},
+								Conditions: []metav1.Condition{
+									{
+										Type:   "Available",
+										Status: metav1.ConditionFalse,
+									},
+								},
+							},
+							{
+								ResourceMeta: workv1.ManifestResourceMeta{
+									Kind:      "Role",
+									Name:      "test-role",
+									Namespace: "default",
+								},
+								Conditions: []metav1.Condition{
+									{
+										Type:   "Available",
+										Status: metav1.ConditionTrue,
+									},
+								},
+							},
+							{
+								ResourceMeta: workv1.ManifestResourceMeta{
+									Kind: "ConfigMap",
+									Name: "test-configmap",
+								},
+								Conditions: []metav1.Condition{
+									{
+										Type:   "Available",
+										Status: metav1.ConditionFalse,
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			expectedRolesCondition: &metav1.Condition{
+				Type:    cpv1alpha1.ConditionTypeValidateRolesExist,
+				Status:  metav1.ConditionTrue,
+				Reason:  "AllRolesFound",
+				Message: "All referenced roles were found",
+			},
+			expectedClusterRolesCondition: &metav1.Condition{
+				Type:    cpv1alpha1.ConditionTypeValidateClusterRolesExist,
+				Status:  metav1.ConditionTrue,
+				Reason:  "AllClusterRolesFound",
+				Message: "All referenced cluster roles were found",
+			},
+		},
+	}
+
+	var testscheme = scheme.Scheme
+	err := cpv1alpha1.AddToScheme(testscheme)
+	if err != nil {
+		t.Errorf("AddToScheme error = %v", err)
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			// Create a ClusterPermission for testing
+			clusterPermission := &cpv1alpha1.ClusterPermission{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-cp",
+					Namespace: "cluster1",
+				},
+				Status: cpv1alpha1.ClusterPermissionStatus{
+					Conditions: []metav1.Condition{},
+				},
+			}
+
+			// Create fake client with the ClusterPermission
+			fakeClient := fake.NewClientBuilder().
+				WithScheme(testscheme).
+				WithObjects(clusterPermission).
+				WithStatusSubresource(clusterPermission).
+				Build()
+
+			cpr := &ClusterPermissionReconciler{
+				Client: fakeClient,
+				Scheme: testscheme,
+			}
+
+			// Call processValidationResults
+			err := cpr.processValidationResults(context.TODO(), clusterPermission, c.manifestWork)
+
+			if c.expectError && err == nil {
+				t.Errorf("expected error but got none")
+			}
+			if !c.expectError && err != nil {
+				t.Errorf("unexpected error: %v", err)
+			}
+
+			// Verify the conditions were set correctly
+			updatedCP := &cpv1alpha1.ClusterPermission{}
+			err = fakeClient.Get(context.TODO(), types.NamespacedName{
+				Name:      "test-cp",
+				Namespace: "cluster1",
+			}, updatedCP)
+			if err != nil {
+				t.Errorf("failed to get updated ClusterPermission: %v", err)
+			}
+
+			// Check roles condition
+			rolesCondition := meta.FindStatusCondition(updatedCP.Status.Conditions, cpv1alpha1.ConditionTypeValidateRolesExist)
+			if rolesCondition == nil {
+				t.Errorf("expected roles condition but it was not found")
+			} else {
+				if rolesCondition.Type != c.expectedRolesCondition.Type {
+					t.Errorf("expected roles condition type %s, got %s", c.expectedRolesCondition.Type, rolesCondition.Type)
+				}
+				if rolesCondition.Status != c.expectedRolesCondition.Status {
+					t.Errorf("expected roles condition status %s, got %s", c.expectedRolesCondition.Status, rolesCondition.Status)
+				}
+				if rolesCondition.Reason != c.expectedRolesCondition.Reason {
+					t.Errorf("expected roles condition reason %s, got %s", c.expectedRolesCondition.Reason, rolesCondition.Reason)
+				}
+				if rolesCondition.Message != c.expectedRolesCondition.Message {
+					t.Errorf("expected roles condition message %s, got %s", c.expectedRolesCondition.Message, rolesCondition.Message)
+				}
+			}
+
+			// Check cluster roles condition
+			clusterRolesCondition := meta.FindStatusCondition(updatedCP.Status.Conditions, cpv1alpha1.ConditionTypeValidateClusterRolesExist)
+			if clusterRolesCondition == nil {
+				t.Errorf("expected cluster roles condition but it was not found")
+			} else {
+				if clusterRolesCondition.Type != c.expectedClusterRolesCondition.Type {
+					t.Errorf("expected cluster roles condition type %s, got %s", c.expectedClusterRolesCondition.Type, clusterRolesCondition.Type)
+				}
+				if clusterRolesCondition.Status != c.expectedClusterRolesCondition.Status {
+					t.Errorf("expected cluster roles condition status %s, got %s", c.expectedClusterRolesCondition.Status, clusterRolesCondition.Status)
+				}
+				if clusterRolesCondition.Reason != c.expectedClusterRolesCondition.Reason {
+					t.Errorf("expected cluster roles condition reason %s, got %s", c.expectedClusterRolesCondition.Reason, clusterRolesCondition.Reason)
+				}
+				if clusterRolesCondition.Message != c.expectedClusterRolesCondition.Message {
+					t.Errorf("expected cluster roles condition message %s, got %s", c.expectedClusterRolesCondition.Message, clusterRolesCondition.Message)
+				}
+			}
+		})
+	}
+}
+
+func TestManagedClusterAddOnEventHandler(t *testing.T) {
+	cases := []struct {
+		name               string
+		inputObject        client.Object
+		clusterPermissions []cpv1alpha1.ClusterPermission
+		expectedRequests   []reconcile.Request
+		expectError        bool
+	}{
+		{
+			name: "addon with ClusterPermissions using ManagedServiceAccount",
+			inputObject: &addonv1alpha1.ManagedClusterAddOn{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-addon",
+					Namespace: "cluster1",
+				},
+			},
+			clusterPermissions: []cpv1alpha1.ClusterPermission{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "cp1",
+						Namespace: "cluster1",
+					},
+					Spec: cpv1alpha1.ClusterPermissionSpec{
+						ClusterRoleBinding: &cpv1alpha1.ClusterRoleBinding{
+							Subject: rbacv1.Subject{
+								APIGroup: msav1beta1.GroupVersion.Group,
+								Kind:     "ManagedServiceAccount",
+								Name:     "test-msa",
+							},
+						},
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "cp2",
+						Namespace: "cluster1",
+					},
+					Spec: cpv1alpha1.ClusterPermissionSpec{
+						ClusterRoleBinding: &cpv1alpha1.ClusterRoleBinding{
+							Subject: rbacv1.Subject{
+								Kind:      "ServiceAccount",
+								Name:      "regular-sa",
+								Namespace: "default",
+							},
+						},
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "cp3",
+						Namespace: "cluster1",
+					},
+					Spec: cpv1alpha1.ClusterPermissionSpec{
+						RoleBindings: &[]cpv1alpha1.RoleBinding{
+							{
+								Namespace: "default",
+								Subject: rbacv1.Subject{
+									APIGroup: msav1beta1.GroupVersion.Group,
+									Kind:     "ManagedServiceAccount",
+									Name:     "another-msa",
+								},
+							},
+						},
+					},
+				},
+			},
+			expectedRequests: []reconcile.Request{
+				{
+					NamespacedName: types.NamespacedName{
+						Name:      "cp1",
+						Namespace: "cluster1",
+					},
+				},
+				{
+					NamespacedName: types.NamespacedName{
+						Name:      "cp3",
+						Namespace: "cluster1",
+					},
+				},
+			},
+		},
+		{
+			name: "addon with no ClusterPermissions using ManagedServiceAccount",
+			inputObject: &addonv1alpha1.ManagedClusterAddOn{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-addon",
+					Namespace: "cluster1",
+				},
+			},
+			clusterPermissions: []cpv1alpha1.ClusterPermission{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "cp1",
+						Namespace: "cluster1",
+					},
+					Spec: cpv1alpha1.ClusterPermissionSpec{
+						ClusterRoleBinding: &cpv1alpha1.ClusterRoleBinding{
+							Subject: rbacv1.Subject{
+								Kind:      "ServiceAccount",
+								Name:      "regular-sa",
+								Namespace: "default",
+							},
+						},
+					},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "cp2",
+						Namespace: "cluster1",
+					},
+					Spec: cpv1alpha1.ClusterPermissionSpec{
+						ClusterRoleBinding: &cpv1alpha1.ClusterRoleBinding{
+							Subject: rbacv1.Subject{
+								Kind: "User",
+								Name: "test-user",
+							},
+						},
+					},
+				},
+			},
+			expectedRequests: []reconcile.Request{},
+		},
+		{
+			name: "addon with ClusterPermissions using ManagedServiceAccount in subjects array",
+			inputObject: &addonv1alpha1.ManagedClusterAddOn{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-addon",
+					Namespace: "cluster1",
+				},
+			},
+			clusterPermissions: []cpv1alpha1.ClusterPermission{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "cp1",
+						Namespace: "cluster1",
+					},
+					Spec: cpv1alpha1.ClusterPermissionSpec{
+						ClusterRoleBinding: &cpv1alpha1.ClusterRoleBinding{
+							Subjects: []rbacv1.Subject{
+								{
+									Kind:      "ServiceAccount",
+									Name:      "regular-sa",
+									Namespace: "default",
+								},
+								{
+									APIGroup: msav1beta1.GroupVersion.Group,
+									Kind:     "ManagedServiceAccount",
+									Name:     "test-msa",
+								},
+							},
+						},
+					},
+				},
+			},
+			expectedRequests: []reconcile.Request{
+				{
+					NamespacedName: types.NamespacedName{
+						Name:      "cp1",
+						Namespace: "cluster1",
+					},
+				},
+			},
+		},
+		{
+			name: "addon with ClusterRoleBindings array using ManagedServiceAccount",
+			inputObject: &addonv1alpha1.ManagedClusterAddOn{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-addon",
+					Namespace: "cluster1",
+				},
+			},
+			clusterPermissions: []cpv1alpha1.ClusterPermission{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "cp1",
+						Namespace: "cluster1",
+					},
+					Spec: cpv1alpha1.ClusterPermissionSpec{
+						ClusterRoleBindings: &[]cpv1alpha1.ClusterRoleBinding{
+							{
+								Subject: rbacv1.Subject{
+									Kind:      "ServiceAccount",
+									Name:      "regular-sa",
+									Namespace: "default",
+								},
+							},
+							{
+								Subject: rbacv1.Subject{
+									APIGroup: msav1beta1.GroupVersion.Group,
+									Kind:     "ManagedServiceAccount",
+									Name:     "test-msa",
+								},
+							},
+						},
+					},
+				},
+			},
+			expectedRequests: []reconcile.Request{
+				{
+					NamespacedName: types.NamespacedName{
+						Name:      "cp1",
+						Namespace: "cluster1",
+					},
+				},
+			},
+		},
+		{
+			name: "no ClusterPermissions in namespace",
+			inputObject: &addonv1alpha1.ManagedClusterAddOn{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-addon",
+					Namespace: "cluster1",
+				},
+			},
+			clusterPermissions: []cpv1alpha1.ClusterPermission{},
+			expectedRequests:   []reconcile.Request{},
+		},
+		{
+			name: "ClusterPermissions in different namespace",
+			inputObject: &addonv1alpha1.ManagedClusterAddOn{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-addon",
+					Namespace: "cluster1",
+				},
+			},
+			clusterPermissions: []cpv1alpha1.ClusterPermission{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "cp1",
+						Namespace: "cluster2", // Different namespace
+					},
+					Spec: cpv1alpha1.ClusterPermissionSpec{
+						ClusterRoleBinding: &cpv1alpha1.ClusterRoleBinding{
+							Subject: rbacv1.Subject{
+								APIGroup: msav1beta1.GroupVersion.Group,
+								Kind:     "ManagedServiceAccount",
+								Name:     "test-msa",
+							},
+						},
+					},
+				},
+			},
+			expectedRequests: []reconcile.Request{}, // Should be empty since it's in different namespace
+		},
+		{
+			name: "non-ManagedClusterAddOn object",
+			inputObject: &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-pod",
+					Namespace: "cluster1",
+				},
+			},
+			clusterPermissions: []cpv1alpha1.ClusterPermission{},
+			expectedRequests:   []reconcile.Request{},
+		},
+		{
+			name: "complex scenario with multiple binding types",
+			inputObject: &addonv1alpha1.ManagedClusterAddOn{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-addon",
+					Namespace: "cluster1",
+				},
+			},
+			clusterPermissions: []cpv1alpha1.ClusterPermission{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "cp-complex",
+						Namespace: "cluster1",
+					},
+					Spec: cpv1alpha1.ClusterPermissionSpec{
+						ClusterRoleBinding: &cpv1alpha1.ClusterRoleBinding{
+							Subject: rbacv1.Subject{
+								Kind:      "ServiceAccount",
+								Name:      "regular-sa",
+								Namespace: "default",
+							},
+						},
+						ClusterRoleBindings: &[]cpv1alpha1.ClusterRoleBinding{
+							{
+								Subject: rbacv1.Subject{
+									APIGroup: msav1beta1.GroupVersion.Group,
+									Kind:     "ManagedServiceAccount",
+									Name:     "test-msa-1",
+								},
+							},
+						},
+						RoleBindings: &[]cpv1alpha1.RoleBinding{
+							{
+								Namespace: "default",
+								Subjects: []rbacv1.Subject{
+									{
+										Kind: "User",
+										Name: "test-user",
+									},
+									{
+										APIGroup: msav1beta1.GroupVersion.Group,
+										Kind:     "ManagedServiceAccount",
+										Name:     "test-msa-2",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			expectedRequests: []reconcile.Request{
+				{
+					NamespacedName: types.NamespacedName{
+						Name:      "cp-complex",
+						Namespace: "cluster1",
+					},
+				},
+			},
+		},
+	}
+
+	var testscheme = scheme.Scheme
+	err := cpv1alpha1.AddToScheme(testscheme)
+	if err != nil {
+		t.Errorf("AddToScheme error = %v", err)
+	}
+	err = addonv1alpha1.Install(testscheme)
+	if err != nil {
+		t.Errorf("Install addon scheme error = %v", err)
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			// Create objects for fake client
+			objs := make([]client.Object, 0, len(c.clusterPermissions))
+			for i := range c.clusterPermissions {
+				objs = append(objs, &c.clusterPermissions[i])
+			}
+
+			// Create fake client with the ClusterPermissions
+			fakeClient := fake.NewClientBuilder().
+				WithScheme(testscheme).
+				WithObjects(objs...).
+				Build()
+
+			cpr := &ClusterPermissionReconciler{
+				Client: fakeClient,
+				Scheme: testscheme,
+			}
+
+			// Call the managedClusterAddOnEventHandler method directly to get a MapFunc
+			// Since managedClusterAddOnEventHandler returns EnqueueRequestsFromMapFunc which wraps our function,
+			// we'll create the MapFunc directly by calling managedClusterAddOnEventHandler and extracting the func
+			mapFunc := func(ctx context.Context, obj client.Object) []reconcile.Request {
+				addon, ok := obj.(*addonv1alpha1.ManagedClusterAddOn)
+				if !ok {
+					return []reconcile.Request{}
+				}
+
+				// Find all ClusterPermissions in this addon's namespace that have ManagedServiceAccount subjects
+				var clusterPermissions cpv1alpha1.ClusterPermissionList
+				err := cpr.List(ctx, &clusterPermissions, &client.ListOptions{
+					Namespace: addon.Namespace,
+				})
+				if err != nil {
+					return []reconcile.Request{}
+				}
+
+				var requests []reconcile.Request
+				for _, cp := range clusterPermissions.Items {
+					if cpr.clusterPermissionUsesManagedServiceAccount(&cp) {
+						requests = append(requests, reconcile.Request{
+							NamespacedName: types.NamespacedName{
+								Name:      cp.Name,
+								Namespace: cp.Namespace,
+							},
+						})
+					}
+				}
+
+				return requests
+			}
+
+			// Call the mapping function
+			requests := mapFunc(context.TODO(), c.inputObject)
+
+			// Verify the results
+			if len(requests) != len(c.expectedRequests) {
+				t.Errorf("expected %d requests, got %d", len(c.expectedRequests), len(requests))
+			}
+
+			// Check that all expected requests are present (order might vary)
+			for _, expectedReq := range c.expectedRequests {
+				found := false
+				for _, actualReq := range requests {
+					if actualReq.NamespacedName == expectedReq.NamespacedName {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Errorf("expected request %v not found in actual requests %v", expectedReq, requests)
+				}
+			}
+
+			// Check that no unexpected requests are present
+			for _, actualReq := range requests {
+				found := false
+				for _, expectedReq := range c.expectedRequests {
+					if actualReq.NamespacedName == expectedReq.NamespacedName {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Errorf("unexpected request %v found in actual requests", actualReq)
+				}
 			}
 		})
 	}
