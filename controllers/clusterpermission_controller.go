@@ -60,7 +60,6 @@ type ClusterPermissionReconciler struct {
 func (r *ClusterPermissionReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&cpv1alpha1.ClusterPermission{}).
-		Owns(&workv1.ManifestWork{}).
 		Watches(&addonv1alpha1.ManagedClusterAddOn{},
 			r.managedClusterAddOnEventHandler(),
 			builder.WithPredicates(predicate.Funcs{
