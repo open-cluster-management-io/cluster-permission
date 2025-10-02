@@ -108,7 +108,7 @@ var _ = Describe("ClusterPermission controller", func() {
 					}},
 					ClusterRoleBinding: &cpv1alpha1.ClusterRoleBinding{
 						Subjects: []rbacv1.Subject{},
-						Subject: rbacv1.Subject{
+						Subject: &rbacv1.Subject{
 							Kind:      "ServiceAccount",
 							Name:      "klusterlet-work-sa",
 							Namespace: "open-cluster-management-agent",
@@ -119,7 +119,7 @@ var _ = Describe("ClusterPermission controller", func() {
 							Namespace: "default",
 							RoleRef:   cpv1alpha1.RoleRef{Kind: "ClusterRole"},
 							Subjects:  []rbacv1.Subject{},
-							Subject: rbacv1.Subject{
+							Subject: &rbacv1.Subject{
 								Kind:      "ServiceAccount",
 								Name:      "klusterlet-work-sa",
 								Namespace: "open-cluster-management-agent",
@@ -216,7 +216,7 @@ var _ = Describe("ClusterPermission controller", func() {
 					}},
 					ClusterRoleBinding: &cpv1alpha1.ClusterRoleBinding{
 						Subjects: []rbacv1.Subject{},
-						Subject: rbacv1.Subject{
+						Subject: &rbacv1.Subject{
 							APIGroup: "authentication.open-cluster-management.io",
 							Kind:     "ManagedServiceAccount",
 							Name:     msaName,
@@ -227,7 +227,7 @@ var _ = Describe("ClusterPermission controller", func() {
 							Namespace: "default",
 							RoleRef:   cpv1alpha1.RoleRef{Kind: "ClusterRole"},
 							Subjects:  []rbacv1.Subject{},
-							Subject: rbacv1.Subject{
+							Subject: &rbacv1.Subject{
 								APIGroup: "authentication.open-cluster-management.io",
 								Kind:     "ManagedServiceAccount",
 								Name:     msaName,
@@ -274,7 +274,7 @@ var _ = Describe("ClusterPermission controller", func() {
 							NamespaceSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"a": "b"}},
 							RoleRef:           cpv1alpha1.RoleRef{Kind: "ClusterRole"},
 							Subjects:          []rbacv1.Subject{},
-							Subject: rbacv1.Subject{
+							Subject: &rbacv1.Subject{
 								APIGroup: "authentication.open-cluster-management.io",
 								Kind:     "ManagedServiceAccount",
 								Name:     msaName,
@@ -322,7 +322,7 @@ var _ = Describe("ClusterPermission controller", func() {
 								Name:     "argocd-application-controller-1",
 							},
 							Subjects: []rbacv1.Subject{},
-							Subject: rbacv1.Subject{
+							Subject: &rbacv1.Subject{
 								Namespace: "openshift-gitops",
 								Kind:      "ServiceAccount",
 								Name:      "sa-sample-existing",
@@ -337,7 +337,7 @@ var _ = Describe("ClusterPermission controller", func() {
 								Name:     "argocd-application-controller-2",
 							},
 							Subjects: []rbacv1.Subject{},
-							Subject: rbacv1.Subject{
+							Subject: &rbacv1.Subject{
 								APIGroup: "rbac.authorization.k8s.io",
 								Kind:     "User",
 								Name:     "user1",
@@ -351,7 +351,7 @@ var _ = Describe("ClusterPermission controller", func() {
 								Name:     "argocd-application-controller-2",
 							},
 							Subjects: []rbacv1.Subject{},
-							Subject: rbacv1.Subject{
+							Subject: &rbacv1.Subject{
 								APIGroup: "rbac.authorization.k8s.io",
 								Kind:     "User",
 								Name:     "user1",
@@ -366,7 +366,7 @@ var _ = Describe("ClusterPermission controller", func() {
 							Name:     "argocd-application-controller-3",
 						},
 						Subjects: []rbacv1.Subject{},
-						Subject: rbacv1.Subject{
+						Subject: &rbacv1.Subject{
 							APIGroup: "rbac.authorization.k8s.io",
 							Kind:     "Group",
 							Name:     "group1",
@@ -401,7 +401,7 @@ var _ = Describe("ClusterPermission controller", func() {
 								Name:     "argocd-application-controller-1",
 							},
 							Subjects: []rbacv1.Subject{},
-							Subject: rbacv1.Subject{
+							Subject: &rbacv1.Subject{
 								Kind: "User",
 								Name: "user1",
 							},
@@ -490,7 +490,7 @@ var _ = Describe("ClusterPermission controller", func() {
 					},
 					ClusterRoleBinding: &cpv1alpha1.ClusterRoleBinding{
 						Subjects: []rbacv1.Subject{},
-						Subject: rbacv1.Subject{
+						Subject: &rbacv1.Subject{
 							APIGroup: "authentication.open-cluster-management.io",
 							Kind:     "ManagedServiceAccount",
 							Name:     msaName + "1",
@@ -538,7 +538,7 @@ var _ = Describe("ClusterPermission controller", func() {
 					RoleBindings: &[]cpv1alpha1.RoleBinding{
 						{
 							Subjects: []rbacv1.Subject{},
-							Subject: rbacv1.Subject{
+							Subject: &rbacv1.Subject{
 								APIGroup: "authentication.open-cluster-management.io",
 								Kind:     "ManagedServiceAccount",
 								Name:     msaName,
@@ -624,7 +624,7 @@ var _ = Describe("ClusterPermission controller", func() {
 								Name: "argocd-application-controller-1",
 							},
 							Subjects: []rbacv1.Subject{},
-							Subject: rbacv1.Subject{
+							Subject: &rbacv1.Subject{
 								Namespace: "openshift-gitops",
 								Kind:      "ServiceAccount",
 								Name:      "sa-sample-existing",
@@ -652,7 +652,7 @@ var _ = Describe("ClusterPermission controller", func() {
 								Kind:     "ClusterRole",
 							},
 							Subjects: []rbacv1.Subject{},
-							Subject: rbacv1.Subject{
+							Subject: &rbacv1.Subject{
 								Namespace: "openshift-gitops",
 								Kind:      "ServiceAccount",
 								Name:      "sa-sample-existing",
@@ -665,7 +665,7 @@ var _ = Describe("ClusterPermission controller", func() {
 			Expect(k8sClient.Create(ctx, &clusterPermissionMissingName)).Should(Succeed())
 
 			By("Test getSubjects()")
-			Expect(len(getSubjects(rbacv1.Subject{}, []rbacv1.Subject{
+			Expect(len(getSubjects(&rbacv1.Subject{}, []rbacv1.Subject{
 				{
 					Namespace: "openshift-gitops",
 					Kind:      "ServiceAccount",
@@ -849,7 +849,7 @@ func TestGenerateSubjects(t *testing.T) {
 				Scheme: testscheme,
 			}
 
-			subjects, err := cpr.generateSubjects(context.TODO(), getSubjects(c.subject, c.subjects), c.clusterNamespace)
+			subjects, err := cpr.generateSubjects(context.TODO(), getSubjects(&c.subject, c.subjects), c.clusterNamespace)
 			if err != nil {
 				t.Errorf("generateSubjects() error = %v", err)
 			}
@@ -1345,7 +1345,7 @@ func TestManagedClusterAddOnEventHandler(t *testing.T) {
 					},
 					Spec: cpv1alpha1.ClusterPermissionSpec{
 						ClusterRoleBinding: &cpv1alpha1.ClusterRoleBinding{
-							Subject: rbacv1.Subject{
+							Subject: &rbacv1.Subject{
 								APIGroup: msav1beta1.GroupVersion.Group,
 								Kind:     "ManagedServiceAccount",
 								Name:     "test-msa",
@@ -1360,7 +1360,7 @@ func TestManagedClusterAddOnEventHandler(t *testing.T) {
 					},
 					Spec: cpv1alpha1.ClusterPermissionSpec{
 						ClusterRoleBinding: &cpv1alpha1.ClusterRoleBinding{
-							Subject: rbacv1.Subject{
+							Subject: &rbacv1.Subject{
 								Kind:      "ServiceAccount",
 								Name:      "regular-sa",
 								Namespace: "default",
@@ -1377,7 +1377,7 @@ func TestManagedClusterAddOnEventHandler(t *testing.T) {
 						RoleBindings: &[]cpv1alpha1.RoleBinding{
 							{
 								Namespace: "default",
-								Subject: rbacv1.Subject{
+								Subject: &rbacv1.Subject{
 									APIGroup: msav1beta1.GroupVersion.Group,
 									Kind:     "ManagedServiceAccount",
 									Name:     "another-msa",
@@ -1418,7 +1418,7 @@ func TestManagedClusterAddOnEventHandler(t *testing.T) {
 					},
 					Spec: cpv1alpha1.ClusterPermissionSpec{
 						ClusterRoleBinding: &cpv1alpha1.ClusterRoleBinding{
-							Subject: rbacv1.Subject{
+							Subject: &rbacv1.Subject{
 								Kind:      "ServiceAccount",
 								Name:      "regular-sa",
 								Namespace: "default",
@@ -1433,7 +1433,7 @@ func TestManagedClusterAddOnEventHandler(t *testing.T) {
 					},
 					Spec: cpv1alpha1.ClusterPermissionSpec{
 						ClusterRoleBinding: &cpv1alpha1.ClusterRoleBinding{
-							Subject: rbacv1.Subject{
+							Subject: &rbacv1.Subject{
 								Kind: "User",
 								Name: "test-user",
 							},
@@ -1501,14 +1501,14 @@ func TestManagedClusterAddOnEventHandler(t *testing.T) {
 					Spec: cpv1alpha1.ClusterPermissionSpec{
 						ClusterRoleBindings: &[]cpv1alpha1.ClusterRoleBinding{
 							{
-								Subject: rbacv1.Subject{
+								Subject: &rbacv1.Subject{
 									Kind:      "ServiceAccount",
 									Name:      "regular-sa",
 									Namespace: "default",
 								},
 							},
 							{
-								Subject: rbacv1.Subject{
+								Subject: &rbacv1.Subject{
 									APIGroup: msav1beta1.GroupVersion.Group,
 									Kind:     "ManagedServiceAccount",
 									Name:     "test-msa",
@@ -1554,7 +1554,7 @@ func TestManagedClusterAddOnEventHandler(t *testing.T) {
 					},
 					Spec: cpv1alpha1.ClusterPermissionSpec{
 						ClusterRoleBinding: &cpv1alpha1.ClusterRoleBinding{
-							Subject: rbacv1.Subject{
+							Subject: &rbacv1.Subject{
 								APIGroup: msav1beta1.GroupVersion.Group,
 								Kind:     "ManagedServiceAccount",
 								Name:     "test-msa",
@@ -1592,7 +1592,7 @@ func TestManagedClusterAddOnEventHandler(t *testing.T) {
 					},
 					Spec: cpv1alpha1.ClusterPermissionSpec{
 						ClusterRoleBinding: &cpv1alpha1.ClusterRoleBinding{
-							Subject: rbacv1.Subject{
+							Subject: &rbacv1.Subject{
 								Kind:      "ServiceAccount",
 								Name:      "regular-sa",
 								Namespace: "default",
@@ -1600,7 +1600,7 @@ func TestManagedClusterAddOnEventHandler(t *testing.T) {
 						},
 						ClusterRoleBindings: &[]cpv1alpha1.ClusterRoleBinding{
 							{
-								Subject: rbacv1.Subject{
+								Subject: &rbacv1.Subject{
 									APIGroup: msav1beta1.GroupVersion.Group,
 									Kind:     "ManagedServiceAccount",
 									Name:     "test-msa-1",
