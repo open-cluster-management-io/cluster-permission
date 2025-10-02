@@ -1,4 +1,4 @@
-FROM registry.ci.openshift.org/stolostron/builder:go1.21-linux AS builder
+FROM brew.registry.redhat.io/rh-osbs/openshift-golang-builder:rhel_8_1.21 AS builder
 
 WORKDIR /go/src/github.com/open-cluster-management-io/cluster-permission
 COPY . .
