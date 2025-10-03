@@ -283,12 +283,15 @@ func (r *ClusterPermissionReconciler) validateSubject(ctx context.Context, subje
 	return nil
 }
 
-func getSubjects(subject rbacv1.Subject, subjects []rbacv1.Subject) []rbacv1.Subject {
+func getSubjects(subject *rbacv1.Subject, subjects []rbacv1.Subject) []rbacv1.Subject {
 	if len(subjects) > 0 {
 		return subjects
 	} else {
 		// should be safe since one of them has to exist due to CRD validation
-		return []rbacv1.Subject{subject}
+		if subject == nil {
+			return []rbacv1.Subject{}
+		}
+		return []rbacv1.Subject{*subject}
 	}
 }
 
@@ -739,7 +742,7 @@ func (r *ClusterPermissionReconciler) clusterPermissionUsesManagedServiceAccount
 		if r.subjectIsManagedServiceAccount(cp.Spec.ClusterRoleBinding.Subject) {
 			return true
 		}
-		if slices.ContainsFunc(cp.Spec.ClusterRoleBinding.Subjects, r.subjectIsManagedServiceAccount) {
+		if slices.ContainsFunc(cp.Spec.ClusterRoleBinding.Subjects, r.subjectIsManagedServiceAccountByValue) {
 			return true
 		}
 	}
@@ -750,7 +753,7 @@ func (r *ClusterPermissionReconciler) clusterPermissionUsesManagedServiceAccount
 			if r.subjectIsManagedServiceAccount(crb.Subject) {
 				return true
 			}
-			if slices.ContainsFunc(crb.Subjects, r.subjectIsManagedServiceAccount) {
+			if slices.ContainsFunc(crb.Subjects, r.subjectIsManagedServiceAccountByValue) {
 				return true
 			}
 		}
@@ -762,7 +765,7 @@ func (r *ClusterPermissionReconciler) clusterPermissionUsesManagedServiceAccount
 			if r.subjectIsManagedServiceAccount(rb.Subject) {
 				return true
 			}
-			if slices.ContainsFunc(rb.Subjects, r.subjectIsManagedServiceAccount) {
+			if slices.ContainsFunc(rb.Subjects, r.subjectIsManagedServiceAccountByValue) {
 				return true
 			}
 		}
@@ -772,6 +775,14 @@ func (r *ClusterPermissionReconciler) clusterPermissionUsesManagedServiceAccount
 }
 
 // subjectIsManagedServiceAccount checks if a subject is a ManagedServiceAccount
-func (r *ClusterPermissionReconciler) subjectIsManagedServiceAccount(subject rbacv1.Subject) bool {
+func (r *ClusterPermissionReconciler) subjectIsManagedServiceAccount(subject *rbacv1.Subject) bool {
+	if subject == nil {
+		return false
+	}
 	return subject.APIGroup == msav1beta1.GroupVersion.Group && subject.Kind == "ManagedServiceAccount"
+}
+
+// subjectIsManagedServiceAccountByValue is a wrapper for use with slices.ContainsFunc
+func (r *ClusterPermissionReconciler) subjectIsManagedServiceAccountByValue(subject rbacv1.Subject) bool {
+	return r.subjectIsManagedServiceAccount(&subject)
 }
