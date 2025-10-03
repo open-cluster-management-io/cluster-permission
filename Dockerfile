@@ -4,7 +4,7 @@ WORKDIR /go/src/github.com/open-cluster-management-io/cluster-permission
 COPY . .
 RUN make -f Makefile build
 
-FROM registry.access.redhat.com/ubi8/ubi-minimal:latest
+FROM registry.access.redhat.com/ubi9/ubi-minimal:latest
 
 RUN microdnf update && \
      microdnf clean all
