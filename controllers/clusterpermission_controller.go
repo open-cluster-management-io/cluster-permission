@@ -28,6 +28,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -68,10 +69,27 @@ func (r *ClusterPermissionReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	// Store the custom informer in the reconciler
 	r.customInformer = customInformer
 
-	// Start the custom informer in a goroutine
+	// Start the custom informer in a goroutine with retry logic
 	go func() {
-		if err := customInformer.Start(); err != nil {
-			log.Log.Error(err, "Failed to start custom ManagedClusterAddOn informer")
+		backoff := wait.Backoff{
+			Duration: 1 * time.Second,
+			Factor:   2.0,
+			Jitter:   0.1,
+			Steps:    5, // Retry up to 5 times (1s, 2s, 4s, 8s, 16s)
+		}
+
+		err := wait.ExponentialBackoff(backoff, func() (bool, error) {
+			if err := customInformer.Start(); err != nil {
+				log.Log.Error(err, "Failed to start custom ManagedClusterAddOn informer, will retry")
+				return false, nil // Retry
+			}
+			log.Log.Info("Successfully started custom ManagedClusterAddOn informer")
+			return true, nil // Success
+		})
+
+		if err != nil {
+			log.Log.Error(err, "Failed to start custom ManagedClusterAddOn informer after retries, controller cannot function properly")
+			panic("custom ManagedClusterAddOn informer failed to start after retries")
 		}
 	}()
 
@@ -133,10 +151,32 @@ func (r *ClusterPermissionReconciler) reconcileClusterPermission(ctx context.Con
 		},
 	}
 
-	// Call the reconcile function directly
-	_, err := r.Reconcile(ctx, req)
+	// Retry with exponential backoff
+	backoff := wait.Backoff{
+		Duration: 1 * time.Second,
+		Factor:   2.0,
+		Jitter:   0.1,
+		Steps:    3, // Retry up to 3 times (1s, 2s, 4s)
+	}
+
+	err := wait.ExponentialBackoffWithContext(ctx, backoff, func(context.Context) (bool, error) {
+		result, err := r.Reconcile(ctx, req)
+		if err != nil {
+			log.Error(err, "Failed to reconcile ClusterPermission, will retry", "name", cp.Name, "namespace", cp.Namespace)
+			return false, nil // Retry on error
+		}
+		if result.Requeue || result.RequeueAfter > 0 {
+			log.Info("Reconcile requested requeue, will retry", "name", cp.Name, "namespace", cp.Namespace, "requeueAfter", result.RequeueAfter)
+			if result.RequeueAfter > 0 {
+				time.Sleep(result.RequeueAfter)
+			}
+			return false, nil // Retry if requeue requested
+		}
+		return true, nil // Success
+	})
+
 	if err != nil {
-		log.Error(err, "Failed to reconcile ClusterPermission", "name", cp.Name, "namespace", cp.Namespace)
+		log.Error(err, "Failed to reconcile ClusterPermission after retries", "name", cp.Name, "namespace", cp.Namespace)
 	}
 }
 
