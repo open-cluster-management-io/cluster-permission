@@ -112,7 +112,7 @@ func (i *ManagedClusterAddOnInformer) Start() error {
 	i.logger.Info("Starting ManagedClusterAddOnInformer")
 
 	// Add event handlers
-	i.informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	_, err := i.informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj any) {
 			// no-op
 		},
@@ -127,6 +127,9 @@ func (i *ManagedClusterAddOnInformer) Start() error {
 			// no-op
 		},
 	})
+	if err != nil {
+		return fmt.Errorf("failed to add event handler: %w", err)
+	}
 
 	// Start the informer
 	go i.informer.Run(i.stopCh)
