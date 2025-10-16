@@ -274,6 +274,8 @@ func (i *ManagedClusterAddOnInformer) ListManagedClusterAddOns() ([]*addonv1alph
 	for _, item := range items {
 		if addon, ok := item.(*addonv1alpha1.ManagedClusterAddOn); ok {
 			addons = append(addons, addon)
+		} else {
+			i.logger.Error(nil, "object is not a ManagedClusterAddOn", "object", item)
 		}
 	}
 
