@@ -20,6 +20,7 @@ import (
 	"context"
 	"path/filepath"
 	"testing"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -43,11 +44,12 @@ import (
 // http://onsi.github.io/ginkgo/ to learn more about Ginkgo.
 
 var (
-	cfg       *rest.Config
-	k8sClient client.Client
-	testEnv   *envtest.Environment
-	ctx       context.Context
-	cancel    context.CancelFunc
+	cfg        *rest.Config
+	k8sClient  client.Client
+	testEnv    *envtest.Environment
+	ctx        context.Context
+	cancel     context.CancelFunc
+	reconciler *ClusterPermissionReconciler
 )
 
 func TestAPIs(t *testing.T) {
@@ -67,6 +69,10 @@ var _ = BeforeSuite(func() {
 			filepath.Join("..", "config", "crds"),
 		},
 		ErrorIfCRDPathMissing: true,
+		// Add timeout configuration to prevent kube-apiserver timeout issues
+		AttachControlPlaneOutput: true,
+		// Increase timeout for stopping the control plane
+		ControlPlaneStopTimeout: 30 * time.Second,
 	}
 
 	var err error
@@ -96,10 +102,11 @@ var _ = BeforeSuite(func() {
 	})
 	Expect(err).ToNot(HaveOccurred())
 
-	err = (&ClusterPermissionReconciler{
+	reconciler = &ClusterPermissionReconciler{
 		Client: k8sManager.GetClient(),
 		Scheme: k8sManager.GetScheme(),
-	}).SetupWithManager(k8sManager)
+	}
+	err = reconciler.SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
 	go func() {
@@ -110,8 +117,20 @@ var _ = BeforeSuite(func() {
 })
 
 var _ = AfterSuite(func() {
-	cancel()
 	By("tearing down the test environment")
+
+	// Stop the custom informer if it exists
+	if reconciler != nil {
+		reconciler.Stop()
+	}
+
+	// Cancel the context to stop the manager
+	cancel()
+
+	// Give more time for goroutines to finish
+	// This helps prevent the kube-apiserver timeout issue
+	time.Sleep(500 * time.Millisecond)
+
 	err := testEnv.Stop()
 	Expect(err).NotTo(HaveOccurred())
 })

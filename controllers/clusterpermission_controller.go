@@ -28,14 +28,11 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/event"
-	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	corev1 "k8s.io/api/core/v1"
@@ -54,43 +51,133 @@ const VALIDATION_MW_RETRY_INTERVAL = 10 * time.Second
 type ClusterPermissionReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
+	// customInformer is the custom informer for ManagedClusterAddOn resources
+	customInformer *ManagedClusterAddOnInformer
 }
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *ClusterPermissionReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	// Create custom informer for ManagedClusterAddOn resources
+	config := mgr.GetConfig()
+	eventHandler := r.createCustomInformerEventHandler()
+
+	customInformer, err := NewManagedClusterAddOnInformer(config, eventHandler)
+	if err != nil {
+		return err
+	}
+
+	// Store the custom informer in the reconciler
+	r.customInformer = customInformer
+
+	// Start the custom informer in a goroutine with retry logic
+	go func() {
+		backoff := wait.Backoff{
+			Duration: 1 * time.Second,
+			Factor:   2.0,
+			Jitter:   0.1,
+			Steps:    5, // Retry up to 5 times (1s, 2s, 4s, 8s, 16s)
+		}
+
+		err := wait.ExponentialBackoff(backoff, func() (bool, error) {
+			if err := customInformer.Start(); err != nil {
+				log.Log.Error(err, "Failed to start custom ManagedClusterAddOn informer, will retry")
+				return false, nil // Retry
+			}
+			log.Log.Info("Successfully started custom ManagedClusterAddOn informer")
+			return true, nil // Success
+		})
+
+		if err != nil {
+			log.Log.Error(err, "Failed to start custom ManagedClusterAddOn informer after retries, controller cannot function properly")
+			panic("custom ManagedClusterAddOn informer failed to start after retries")
+		}
+	}()
+
+	// Setup the controller without the built-in ManagedClusterAddOn watching
+	// since we're using the custom informer instead
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&cpv1alpha1.ClusterPermission{}).
-		Watches(&addonv1alpha1.ManagedClusterAddOn{},
-			r.managedClusterAddOnEventHandler(),
-			builder.WithPredicates(predicate.Funcs{
-				CreateFunc: func(e event.CreateEvent) bool {
-					return false // Don't process Create events
-				},
-				UpdateFunc: func(e event.UpdateEvent) bool {
-					// Only process Update events for managed-serviceaccount addon when status.namespace changes
-					oldAddon, oldOk := e.ObjectOld.(*addonv1alpha1.ManagedClusterAddOn)
-					newAddon, newOk := e.ObjectNew.(*addonv1alpha1.ManagedClusterAddOn)
-
-					if !oldOk || !newOk {
-						return false
-					}
-
-					// Only process if this is the managed-serviceaccount addon
-					if newAddon.Name != msacommon.AddonName {
-						return false
-					}
-
-					// Only process if status.namespace has changed
-					return oldAddon.Status.Namespace != newAddon.Status.Namespace
-				},
-				DeleteFunc: func(e event.DeleteEvent) bool {
-					return false // Don't process Delete events
-				},
-				GenericFunc: func(e event.GenericEvent) bool {
-					return false // Don't process Generic events
-				},
-			})).
 		Complete(r)
+}
+
+// Stop stops the custom informer if it exists
+func (r *ClusterPermissionReconciler) Stop() {
+	if r.customInformer != nil {
+		r.customInformer.Stop()
+	}
+}
+
+// createCustomInformerEventHandler creates an event handler for the custom informer
+func (r *ClusterPermissionReconciler) createCustomInformerEventHandler() func(obj *addonv1alpha1.ManagedClusterAddOn) {
+	return func(addon *addonv1alpha1.ManagedClusterAddOn) {
+		log := log.Log.WithName("CustomInformerEventHandler")
+
+		// Find all ClusterPermissions in this addon's namespace that have ManagedServiceAccount subjects
+		ctx := context.Background()
+		var clusterPermissions cpv1alpha1.ClusterPermissionList
+		err := r.List(ctx, &clusterPermissions, &client.ListOptions{
+			Namespace: addon.Namespace,
+		})
+		if err != nil {
+			log.Error(err, "failed to list ClusterPermissions", "namespace", addon.Namespace)
+			return
+		}
+
+		// Process each ClusterPermission that uses ManagedServiceAccount
+		for _, cp := range clusterPermissions.Items {
+			if r.clusterPermissionUsesManagedServiceAccount(&cp) {
+				log.Info("Triggering reconciliation for ClusterPermission due to ManagedClusterAddOn change",
+					"clusterPermission", cp.Name,
+					"namespace", cp.Namespace,
+					"addonNamespace", addon.Status.Namespace,
+				)
+
+				// Trigger reconciliation by updating the ClusterPermission
+				r.reconcileClusterPermission(ctx, &cp)
+			}
+		}
+	}
+}
+
+// reconcileClusterPermission triggers reconciliation of a specific ClusterPermission
+func (r *ClusterPermissionReconciler) reconcileClusterPermission(ctx context.Context, cp *cpv1alpha1.ClusterPermission) {
+	log := log.FromContext(ctx)
+
+	// Create a reconcile request
+	req := reconcile.Request{
+		NamespacedName: types.NamespacedName{
+			Name:      cp.Name,
+			Namespace: cp.Namespace,
+		},
+	}
+
+	// Retry with exponential backoff
+	backoff := wait.Backoff{
+		Duration: 1 * time.Second,
+		Factor:   2.0,
+		Jitter:   0.1,
+		Steps:    3, // Retry up to 3 times (1s, 2s, 4s)
+	}
+
+	err := wait.ExponentialBackoffWithContext(ctx, backoff, func(context.Context) (bool, error) {
+		result, err := r.Reconcile(ctx, req)
+		if err != nil {
+			log.Error(err, "Failed to reconcile ClusterPermission, will retry", "name", cp.Name, "namespace", cp.Namespace)
+			return false, nil // Retry on error
+		}
+		if result.Requeue || result.RequeueAfter > 0 {
+			log.Info("Reconcile requested requeue, will retry", "name", cp.Name, "namespace", cp.Namespace, "requeueAfter", result.RequeueAfter)
+			if result.RequeueAfter > 0 {
+				time.Sleep(result.RequeueAfter)
+			}
+			return false, nil // Retry if requeue requested
+		}
+		return true, nil // Success
+	})
+
+	if err != nil {
+		log.Error(err, "Failed to reconcile ClusterPermission after retries", "name", cp.Name, "namespace", cp.Namespace)
+	}
 }
 
 //+kubebuilder:rbac:groups=rbac.open-cluster-management.io,resources=clusterpermissions,verbs=get;list;watch;create;update;patch;delete
@@ -692,47 +779,6 @@ func joinStrings(strings []string, separator string) string {
 		result += separator + strings[i]
 	}
 	return result
-}
-
-// managedClusterAddOnEventHandler returns an event handler that reconciles ClusterPermissions
-// when a ManagedClusterAddOn's status.namespace changes
-func (r *ClusterPermissionReconciler) managedClusterAddOnEventHandler() handler.EventHandler {
-	return handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []reconcile.Request {
-		log := log.FromContext(ctx)
-
-		addon, ok := obj.(*addonv1alpha1.ManagedClusterAddOn)
-		if !ok {
-			log.Error(nil, "object is not a ManagedClusterAddOn", "object", obj)
-			return []reconcile.Request{}
-		}
-
-		// Find all ClusterPermissions in this addon's namespace that have ManagedServiceAccount subjects
-		var clusterPermissions cpv1alpha1.ClusterPermissionList
-		err := r.List(ctx, &clusterPermissions, &client.ListOptions{
-			Namespace: addon.Namespace,
-		})
-		if err != nil {
-			log.Error(err, "failed to list ClusterPermissions", "namespace", addon.Namespace)
-			return []reconcile.Request{}
-		}
-
-		var requests []reconcile.Request
-		for _, cp := range clusterPermissions.Items {
-			if r.clusterPermissionUsesManagedServiceAccount(&cp) {
-				requests = append(requests, reconcile.Request{
-					NamespacedName: types.NamespacedName{
-						Name:      cp.Name,
-						Namespace: cp.Namespace,
-					},
-				})
-			}
-		}
-
-		log.Info("ManagedClusterAddOn status.namespace changed, reconciling ClusterPermissions",
-			"addon", addon.Name, "namespace", addon.Namespace, "requests", len(requests))
-
-		return requests
-	})
 }
 
 // clusterPermissionUsesManagedServiceAccount checks if a ClusterPermission uses ManagedServiceAccount subjects

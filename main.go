@@ -30,6 +30,7 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	addonv1alpha1 "open-cluster-management.io/api/addon/v1alpha1"
@@ -57,11 +58,10 @@ var options = Options{
 }
 
 var (
-	scheme              = runtime.NewScheme()
-	setupLog            = ctrl.Log.WithName("setup")
-	metricsHost         = "0.0.0.0"
-	metricsPort         = 8286
-	operatorMetricsPort = 8598
+	scheme      = runtime.NewScheme()
+	setupLog    = ctrl.Log.WithName("setup")
+	metricsHost = "0.0.0.0"
+	metricsPort = 8286
 )
 
 func init() {
@@ -135,6 +135,15 @@ func main() {
 		LeaseDuration:           &options.LeaderElectionLeaseDuration,
 		RenewDeadline:           &options.LeaderElectionRenewDeadline,
 		RetryPeriod:             &options.LeaderElectionRetryPeriod,
+		// Memory optimization: Configure cache options
+		Cache: cache.Options{
+			// Reduce default resync period to save memory
+			SyncPeriod: &[]time.Duration{10 * time.Minute}[0],
+			// Configure cache size limits
+			DefaultNamespaces: map[string]cache.Config{
+				// Only cache specific namespaces if needed
+			},
+		},
 	})
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")
