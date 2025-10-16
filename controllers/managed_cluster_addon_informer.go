@@ -119,6 +119,8 @@ func (i *ManagedClusterAddOnInformer) Start() error {
 		UpdateFunc: func(oldObj, newObj any) {
 			if addon, ok := newObj.(*addonv1alpha1.ManagedClusterAddOn); ok {
 				i.enqueueAddon(addon)
+			} else {
+				i.logger.Error(nil, "newObj is not a ManagedClusterAddOn", "object", newObj)
 			}
 		},
 		DeleteFunc: func(obj any) {
