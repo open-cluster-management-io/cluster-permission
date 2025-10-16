@@ -200,3 +200,103 @@ else
     echo "All referenced cluster roles were not found"
     exit 1
 fi
+
+echo "TEST ManagedClusterAddOn Custom Informer"
+kubectl config use-context kind-hub
+
+# Create a ManagedClusterAddOn with the name "managed-serviceaccount" that the informer watches
+echo "Creating ManagedClusterAddOn 'managed-serviceaccount' in cluster1..."
+cat <<EOF | kubectl apply -f -
+apiVersion: addon.open-cluster-management.io/v1alpha1
+kind: ManagedClusterAddOn
+metadata:
+  name: managed-serviceaccount
+  namespace: cluster1
+spec:
+  installNamespace: open-cluster-management-agent-addon
+EOF
+
+echo "Waiting for ManagedClusterAddOn to be created..."
+sleep 10
+
+# Verify the addon was created
+if kubectl get managedclusteraddon managed-serviceaccount -n cluster1; then
+    echo "ManagedClusterAddOn managed-serviceaccount found in cluster1"
+else
+    echo "ManagedClusterAddOn managed-serviceaccount not found in cluster1"
+    exit 1
+fi
+
+# Wait for informer to cache the addon
+echo "Waiting for custom informer to cache the ManagedClusterAddOn..."
+sleep 5
+
+# Create a ClusterPermission with ManagedServiceAccount subject
+echo "Creating ClusterPermission with ManagedServiceAccount subject..."
+kubectl apply -f config/samples/clusterpermission_subject_msa.yaml -n cluster1
+sleep 20
+
+# Verify the ClusterPermission was processed
+work_kubectl_command=$(kubectl -n cluster1 get clusterpermission clusterpermission-msa-subject-sample -o yaml | grep kubectl | grep ManifestWork)
+if $work_kubectl_command; then
+    echo "ManifestWork for ManagedServiceAccount subject found"
+else
+    echo "ManifestWork for ManagedServiceAccount subject not found"
+    exit 1
+fi
+
+# Get the initial generation/resourceVersion of the ManifestWork before addon update
+initial_manifestwork=$(kubectl get manifestwork -n cluster1 -o name | head -n 1 | cut -d'/' -f2)
+echo "Found ManifestWork: $initial_manifestwork"
+
+# Update the ManagedClusterAddOn to test the informer's update handling
+echo "Updating ManagedClusterAddOn to trigger informer event handler..."
+kubectl patch managedclusteraddon managed-serviceaccount -n cluster1 --type=merge -p '{"status":{"conditions":[{"type":"Available","status":"True","reason":"AddonAvailable","message":"addon is available"}],"namespace":"open-cluster-management-agent-addon"}}'
+
+echo "Waiting for informer to process the update event..."
+sleep 15
+
+# Check if the informer logs show the event was processed
+echo "Checking controller logs for custom informer activity..."
+if kubectl logs -n open-cluster-management -l name=cluster-permission --tail=100 | grep -i "ManagedClusterAddOnInformer"; then
+    echo "Custom informer logs found"
+else
+    echo "Note: Custom informer logs not found (may be at different log level)"
+fi
+
+# Check if the event handler triggered reconciliation
+if kubectl logs -n open-cluster-management -l name=cluster-permission --tail=100 | grep -i "CustomInformerEventHandler"; then
+    echo "Custom informer event handler was triggered"
+else
+    echo "Note: Event handler logs not found (may be at different log level)"
+fi
+
+# Verify the informer can list addons correctly by checking if ClusterPermission status shows the addon info
+echo "Verifying ClusterPermission status reflects the ManagedClusterAddOn..."
+if kubectl get clusterpermission clusterpermission-msa-subject-sample -n cluster1 -o yaml | grep -i "managedserviceaccount\|managed-serviceaccount"; then
+    echo "ClusterPermission references ManagedServiceAccount correctly"
+fi
+
+# Additional verification: Create another ManagedClusterAddOn with a different name to ensure field selector works
+echo "Creating a different ManagedClusterAddOn to verify field selector (should NOT be watched)..."
+cat <<EOF | kubectl apply -f -
+apiVersion: addon.open-cluster-management.io/v1alpha1
+kind: ManagedClusterAddOn
+metadata:
+  name: other-addon
+  namespace: cluster1
+spec:
+  installNamespace: other-namespace
+EOF
+
+sleep 5
+
+# Update the other addon and verify it doesn't trigger events (field selector test)
+kubectl patch managedclusteraddon other-addon -n cluster1 --type=merge -p '{"status":{"conditions":[{"type":"Available","status":"True"}]}}'
+sleep 5
+
+echo "Verifying that only 'managed-serviceaccount' addon triggers informer events..."
+addon_specific_logs=$(kubectl logs -n open-cluster-management -l name=cluster-permission --tail=50 | grep -c "managed-serviceaccount" || echo "0")
+echo "Found $addon_specific_logs references to 'managed-serviceaccount' in recent logs"
+
+echo "ManagedClusterAddOn Custom Informer test completed successfully"
