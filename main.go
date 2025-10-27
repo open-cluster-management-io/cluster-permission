@@ -137,8 +137,9 @@ func main() {
 		RetryPeriod:             &options.LeaderElectionRetryPeriod,
 		// Memory optimization: Configure cache options
 		Cache: cache.Options{
-			// Reduce default resync period to save memory
-			SyncPeriod: &[]time.Duration{10 * time.Minute}[0],
+			// Use a longer resync period for resources that change infrequently
+			// Controller-runtime default is 10 hours, which is appropriate for this use case
+			SyncPeriod: &[]time.Duration{10 * time.Hour}[0],
 			// Configure cache size limits
 			DefaultNamespaces: map[string]cache.Config{
 				// Only cache specific namespaces if needed

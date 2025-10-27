@@ -287,12 +287,17 @@ func (r *ClusterPermissionReconciler) Reconcile(ctx context.Context, req ctrl.Re
 			return ctrl.Result{}, err
 		}
 	} else if err == nil {
-		log.Info("updating ManifestWork")
-		mw.Spec = manifestWork.Spec
-		err = r.Client.Update(ctx, &mw)
-		if err != nil {
-			log.Error(err, "unable to update ManifestWork")
-			return ctrl.Result{}, err
+		// Only update if the spec has actually changed
+		if !equality.Semantic.DeepEqual(mw.Spec, manifestWork.Spec) {
+			log.Info("updating ManifestWork - spec has changed")
+			mw.Spec = manifestWork.Spec
+			err = r.Client.Update(ctx, &mw)
+			if err != nil {
+				log.Error(err, "unable to update ManifestWork")
+				return ctrl.Result{}, err
+			}
+		} else {
+			log.Info("ManifestWork spec unchanged, skipping update")
 		}
 	} else {
 		log.Error(err, "unable to fetch ManifestWork")
