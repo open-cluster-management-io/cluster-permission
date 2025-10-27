@@ -87,7 +87,7 @@ func NewManagedClusterAddOnInformer(config *rest.Config, eventHandler func(obj *
 	informer := cache.NewSharedIndexInformer(
 		listWatcher,
 		&addonv1alpha1.ManagedClusterAddOn{},
-		time.Minute*10, // resync period
+		time.Hour*10, // resync period - ManagedClusterAddOn namespaces change infrequently
 		cache.Indexers{},
 	)
 
@@ -117,10 +117,31 @@ func (i *ManagedClusterAddOnInformer) Start() error {
 			// no-op
 		},
 		UpdateFunc: func(oldObj, newObj any) {
-			if addon, ok := newObj.(*addonv1alpha1.ManagedClusterAddOn); ok {
-				i.enqueueAddon(addon)
-			} else {
+			oldAddon, oldOk := oldObj.(*addonv1alpha1.ManagedClusterAddOn)
+			newAddon, newOk := newObj.(*addonv1alpha1.ManagedClusterAddOn)
+
+			if !newOk {
 				i.logger.Error(nil, "newObj is not a ManagedClusterAddOn", "object", newObj)
+				return
+			}
+
+			if !oldOk {
+				i.logger.Error(nil, "oldObj is not a ManagedClusterAddOn", "object", oldObj)
+				return
+			}
+
+			// Only enqueue if the addon's Status.Namespace or Spec.InstallNamespace has changed
+			// These are the fields the controller cares about for generating subjects
+			if oldAddon.Status.Namespace != newAddon.Status.Namespace ||
+				oldAddon.Spec.InstallNamespace != newAddon.Spec.InstallNamespace {
+				i.logger.Info("ManagedClusterAddOn namespace changed, enqueuing for reconciliation",
+					"namespace", newAddon.Namespace,
+					"name", newAddon.Name,
+					"oldStatusNamespace", oldAddon.Status.Namespace,
+					"newStatusNamespace", newAddon.Status.Namespace,
+					"oldInstallNamespace", oldAddon.Spec.InstallNamespace,
+					"newInstallNamespace", newAddon.Spec.InstallNamespace)
+				i.enqueueAddon(newAddon)
 			}
 		},
 		DeleteFunc: func(obj any) {
