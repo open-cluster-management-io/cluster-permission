@@ -26,6 +26,7 @@ const (
 	ConditionTypeValidation                string = "Validation"
 	ConditionTypeValidateRolesExist        string = "ValidateRolesExist"
 	ConditionTypeValidateClusterRolesExist string = "ValidateClusterRolesExist"
+	ConditionTypeApplied                          = "Applied"
 )
 
 // ClusterPermissionSpec defines the desired state of ClusterPermission
@@ -158,12 +159,87 @@ type ClusterPermissionStatus struct {
 	// Conditions is the condition list.
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
+
+	// ResourceStatus contains the status of each RBAC resource
+	// +optional
+	ResourceStatus *ResourceStatus `json:"resourceStatus,omitempty"`
 }
 
-//+genclient
-//+kubebuilder:object:root=true
-//+kubebuilder:subresource:status
-//+kubebuilder:resource:scope=Namespaced
+// ResourceStatus contains the status of each RBAC resource type
+type ResourceStatus struct {
+	// ClusterRoles contains the status of ClusterRoles
+	// +optional
+	ClusterRoles []ClusterRoleStatus `json:"clusterRoles,omitempty"`
+
+	// ClusterRoleBindings contains the status of ClusterRoleBindings
+	// +optional
+	ClusterRoleBindings []ClusterRoleBindingStatus `json:"clusterRoleBindings,omitempty"`
+
+	// Roles contains the status of Roles
+	// +optional
+	Roles []RoleStatus `json:"roles,omitempty"`
+
+	// RoleBindings contains the status of RoleBindings
+	// +optional
+	RoleBindings []RoleBindingStatus `json:"roleBindings,omitempty"`
+}
+
+// ClusterRoleStatus contains the status of a ClusterRole
+type ClusterRoleStatus struct {
+	// Name is the name of the ClusterRole
+	// +required
+	Name string `json:"name"`
+
+	// Conditions contain the condition list for this ClusterRole
+	// +optional
+	Conditions []metav1.Condition `json:"condition,omitempty"`
+}
+
+// ClusterRoleBindingStatus contains the status of a ClusterRoleBinding
+type ClusterRoleBindingStatus struct {
+	// Name is the name of the ClusterRoleBinding
+	// +required
+	Name string `json:"name"`
+
+	// Conditions contain the condition list for this ClusterRoleBinding
+	// +optional
+	Conditions []metav1.Condition `json:"condition,omitempty"`
+}
+
+// RoleStatus contains the status of a Role
+type RoleStatus struct {
+	// Name is the name of the Role
+	// +required
+	Name string `json:"name"`
+
+	// Namespace is the namespace of the Role
+	// +required
+	Namespace string `json:"namespace"`
+
+	// Conditions contain the condition list for this Role
+	// +optional
+	Conditions []metav1.Condition `json:"condition,omitempty"`
+}
+
+// RoleBindingStatus contains the status of a RoleBinding
+type RoleBindingStatus struct {
+	// Name is the name of the RoleBinding
+	// +required
+	Name string `json:"name"`
+
+	// Namespace is the namespace of the RoleBinding
+	// +required
+	Namespace string `json:"namespace"`
+
+	// Conditions contain the condition list for this RoleBinding
+	// +optional
+	Conditions []metav1.Condition `json:"condition,omitempty"`
+}
+
+// +genclient
+// +kubebuilder:object:root=true
+// +kubebuilder:subresource:status
+// +kubebuilder:resource:scope=Namespaced
 
 // ClusterPermission is the Schema for the clusterpermissions API
 type ClusterPermission struct {
@@ -174,7 +250,7 @@ type ClusterPermission struct {
 	Status ClusterPermissionStatus `json:"status,omitempty"`
 }
 
-//+kubebuilder:object:root=true
+// +kubebuilder:object:root=true
 
 // ClusterPermissionList contains a list of ClusterPermission
 type ClusterPermissionList struct {

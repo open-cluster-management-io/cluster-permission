@@ -7,6 +7,7 @@ import (
 	"github.com/onsi/gomega"
 	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/rand"
 	workv1 "open-cluster-management.io/api/work/v1"
@@ -96,6 +97,67 @@ var _ = ginkgo.Describe("ClusterPermission single resource test", ginkgo.Ordered
 					}
 				}
 				return false
+			}).Should(gomega.BeTrue())
+
+			ginkgo.By("Checking ClusterPermission resourceStatus")
+			gomega.Eventually(func() bool {
+				cp, err := clusterPermissionClient.ApiV1alpha1().ClusterPermissions(spokeClusterName).Get(ctx, clusterPermissionName, v1.GetOptions{})
+				if err != nil {
+					return false
+				}
+				if cp.Status.ResourceStatus == nil {
+					return false
+				}
+
+				// Verify ClusterRole status
+				if len(cp.Status.ResourceStatus.ClusterRoles) != 1 {
+					return false
+				}
+				if cp.Status.ResourceStatus.ClusterRoles[0].Name != clusterPermissionName {
+					return false
+				}
+				// Check Applied condition for ClusterRole
+				if !meta.IsStatusConditionTrue(cp.Status.ResourceStatus.ClusterRoles[0].Conditions, cpv1alpha1.ConditionTypeApplied) {
+					return false
+				}
+
+				// Verify ClusterRoleBinding status
+				if len(cp.Status.ResourceStatus.ClusterRoleBindings) != 1 {
+					return false
+				}
+				if cp.Status.ResourceStatus.ClusterRoleBindings[0].Name != clusterPermissionName {
+					return false
+				}
+				// Check Applied condition for ClusterRoleBinding
+				if !meta.IsStatusConditionTrue(cp.Status.ResourceStatus.ClusterRoleBindings[0].Conditions, cpv1alpha1.ConditionTypeApplied) {
+					return false
+				}
+
+				// Verify Role status
+				if len(cp.Status.ResourceStatus.Roles) != 1 {
+					return false
+				}
+				if cp.Status.ResourceStatus.Roles[0].Name != clusterPermissionName || cp.Status.ResourceStatus.Roles[0].Namespace != "default" {
+					return false
+				}
+				// Check Applied condition for Role
+				if !meta.IsStatusConditionTrue(cp.Status.ResourceStatus.Roles[0].Conditions, cpv1alpha1.ConditionTypeApplied) {
+					return false
+				}
+
+				// Verify RoleBinding status
+				if len(cp.Status.ResourceStatus.RoleBindings) != 1 {
+					return false
+				}
+				if cp.Status.ResourceStatus.RoleBindings[0].Name != clusterPermissionName || cp.Status.ResourceStatus.RoleBindings[0].Namespace != "default" {
+					return false
+				}
+				// Check Applied condition for RoleBinding
+				if !meta.IsStatusConditionTrue(cp.Status.ResourceStatus.RoleBindings[0].Conditions, cpv1alpha1.ConditionTypeApplied) {
+					return false
+				}
+
+				return true
 			}).Should(gomega.BeTrue())
 
 			// 3. check if manifestWork of clusterPermission is created

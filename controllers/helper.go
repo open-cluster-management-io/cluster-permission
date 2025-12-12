@@ -204,3 +204,19 @@ func buildManifestWork(clusterPermission cpv1alpha1.ClusterPermission, manifestW
 		},
 	}
 }
+
+// joinStrings joins a slice of strings with a separator
+func joinStrings(strings []string, separator string) string {
+	if len(strings) == 0 {
+		return ""
+	}
+	if len(strings) == 1 {
+		return strings[0]
+	}
+
+	result := strings[0]
+	for i := 1; i < len(strings); i++ {
+		result += separator + strings[i]
+	}
+	return result
+}
