@@ -182,6 +182,18 @@ test: ensure-kubebuilder-tools
 deploy-ocm:
 	deploy/ocm/install.sh
 
+.PHONY: deploy-cluster-permission
+deploy-cluster-permission:
+	deploy/cluster-permission/install.sh
+
+.PHONY: deploy-managed-serviceaccount
+deploy-managed-serviceaccount:
+	deploy/managed-serviceaccount/install.sh
+
+.PHONY: run-e2e
+run-e2e:
+	go test -c ./test/e2e
+	./e2e.test -test.v -ginkgo.v 
+
 .PHONY: test-e2e
-test-e2e: deploy-ocm
-	e2e/run_e2e.sh
+test-e2e: deploy-ocm deploy-managed-serviceaccount deploy-cluster-permission run-e2e

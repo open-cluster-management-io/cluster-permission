@@ -89,7 +89,8 @@ jobs:
         uses: securego/gosec@master
         with:
           args: -exclude-generated ./...
-
+        env:
+          GOFLAGS: "-buildvcs=false"
   e2e:
     name: e2e
     runs-on: ubuntu-latest
@@ -125,3 +126,6 @@ jobs:
           make test-e2e
         env:
           KUBECONFIG: /home/runner/.kube/config
+          HUB_KUBECONFIG: /home/runner/.kube/config
+          SPOKE_KUBECONFIG: /home/runner/.kube/config
+          SPOKE_CLUSTER_NAME: "cluster1"
