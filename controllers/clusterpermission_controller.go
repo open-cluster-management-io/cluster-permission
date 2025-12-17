@@ -180,13 +180,13 @@ func (r *ClusterPermissionReconciler) reconcileClusterPermission(ctx context.Con
 	}
 }
 
-//+kubebuilder:rbac:groups=rbac.open-cluster-management.io,resources=clusterpermissions,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=rbac.open-cluster-management.io,resources=clusterpermissions/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=rbac.open-cluster-management.io,resources=clusterpermissions/finalizers,verbs=update
-//+kubebuilder:rbac:groups=work.open-cluster-management.io,resources=manifestworks,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=cluster.open-cluster-management.io,resources=managedclusters,verbs=get;list;watch
-//+kubebuilder:rbac:groups=addon.open-cluster-management.io,resources=managedclusteraddons,verbs=get;list;watch
-//+kubebuilder:rbac:groups=authentication.open-cluster-management.io,resources=managedserviceaccounts,verbs=get;list;watch
+// +kubebuilder:rbac:groups=rbac.open-cluster-management.io,resources=clusterpermissions,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=rbac.open-cluster-management.io,resources=clusterpermissions/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=rbac.open-cluster-management.io,resources=clusterpermissions/finalizers,verbs=update
+// +kubebuilder:rbac:groups=work.open-cluster-management.io,resources=manifestworks,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=cluster.open-cluster-management.io,resources=managedclusters,verbs=get;list;watch
+// +kubebuilder:rbac:groups=addon.open-cluster-management.io,resources=managedclusteraddons,verbs=get;list;watch
+// +kubebuilder:rbac:groups=authentication.open-cluster-management.io,resources=managedserviceaccounts,verbs=get;list;watch
 
 // Reconcile validates the ClusterPermission spec and applies a ManifestWork with the RBAC resources in it's payload
 func (r *ClusterPermissionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -195,7 +195,11 @@ func (r *ClusterPermissionReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	defer log.Info("done reconciling ClusterPermission")
 
 	var clusterPermission cpv1alpha1.ClusterPermission
-	if err := r.Get(ctx, req.NamespacedName, &clusterPermission); err != nil {
+	err := r.Get(ctx, req.NamespacedName, &clusterPermission)
+	if apierrors.IsNotFound(err) {
+		return ctrl.Result{}, nil
+	}
+	if err != nil {
 		log.Error(err, "unable to fetch ClusterPermission")
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
@@ -302,33 +306,6 @@ func (r *ClusterPermissionReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	} else {
 		log.Error(err, "unable to fetch ManifestWork")
 		return ctrl.Result{}, err
-	}
-
-	var updatedMW workv1.ManifestWork
-	err = r.Get(ctx, types.NamespacedName{Name: mwName, Namespace: clusterPermission.Namespace}, &updatedMW)
-	if err != nil {
-		log.Error(err, "unable to fetch updated ManifestWork")
-		return ctrl.Result{}, err
-	}
-
-	err = r.updateStatus(ctx, &clusterPermission, []*metav1.Condition{
-		{
-			Type:   cpv1alpha1.ConditionTypeAppliedRBACManifestWork,
-			Status: metav1.ConditionTrue,
-			Reason: cpv1alpha1.ConditionTypeAppliedRBACManifestWork,
-			Message: "Run the following command to check the ManifestWork status:\n" +
-				"kubectl -n " + clusterPermission.Namespace + " get ManifestWork " + mwName + " -o yaml",
-		},
-	})
-
-	if validateCP {
-		mwAppliedCondition := meta.FindStatusCondition(updatedMW.Status.Conditions, "Applied")
-		if mwAppliedCondition == nil || mwAppliedCondition.Status != "True" {
-			log.Info("ManifestWork not applied, requeueing to get the status")
-			return ctrl.Result{Requeue: true, RequeueAfter: VALIDATION_MW_RETRY_INTERVAL}, err
-		} else {
-			err = r.processValidationResults(ctx, &clusterPermission, &updatedMW)
-		}
 	}
 
 	return ctrl.Result{}, err
@@ -701,89 +678,6 @@ func (r *ClusterPermissionReconciler) generateManifestWorkPayload(ctx context.Co
 	}
 
 	return clusterRole, clusterRoleBindings, roles, roleBindings, roleRefs, nil
-}
-
-// processValidationResults processes the feedback from validation ManifestWork and updates status conditions
-func (r *ClusterPermissionReconciler) processValidationResults(ctx context.Context, clusterPermission *cpv1alpha1.ClusterPermission, mw *workv1.ManifestWork) error {
-	log := log.FromContext(ctx)
-
-	// Analyze the status feedback to determine which roles are missing
-	var missingRoles []string
-	var missingClusterRoles []string
-
-	// Check feedback from ManifestWork status
-	for _, status := range mw.Status.ResourceStatus.Manifests {
-		availableCondition := meta.FindStatusCondition(status.Conditions, "Available")
-		if availableCondition != nil && availableCondition.Status == "True" {
-			continue
-		}
-
-		switch status.ResourceMeta.Kind {
-		case "Role":
-			missingRoles = append(missingRoles, status.ResourceMeta.Namespace+"/"+status.ResourceMeta.Name)
-		case "ClusterRole":
-			missingClusterRoles = append(missingClusterRoles, status.ResourceMeta.Name)
-		}
-	}
-
-	// Update status conditions based on validation results
-	var conditions []*metav1.Condition
-
-	if len(missingRoles) > 0 {
-		conditions = append(conditions, &metav1.Condition{
-			Type:    cpv1alpha1.ConditionTypeValidateRolesExist,
-			Status:  metav1.ConditionFalse,
-			Reason:  "RolesNotFound",
-			Message: "The following roles were not found: " + joinStrings(missingRoles, ", "),
-		})
-	} else {
-		conditions = append(conditions, &metav1.Condition{
-			Type:    cpv1alpha1.ConditionTypeValidateRolesExist,
-			Status:  metav1.ConditionTrue,
-			Reason:  "AllRolesFound",
-			Message: "All referenced roles were found",
-		})
-	}
-
-	if len(missingClusterRoles) > 0 {
-		conditions = append(conditions, &metav1.Condition{
-			Type:    cpv1alpha1.ConditionTypeValidateClusterRolesExist,
-			Status:  metav1.ConditionFalse,
-			Reason:  "ClusterRolesNotFound",
-			Message: "The following cluster roles were not found: " + joinStrings(missingClusterRoles, ", "),
-		})
-	} else {
-		conditions = append(conditions, &metav1.Condition{
-			Type:    cpv1alpha1.ConditionTypeValidateClusterRolesExist,
-			Status:  metav1.ConditionTrue,
-			Reason:  "AllClusterRolesFound",
-			Message: "All referenced cluster roles were found",
-		})
-	}
-
-	// Update all conditions
-	if err := r.updateStatus(ctx, clusterPermission, conditions); err != nil {
-		log.Error(err, "failed to update validation status conditions")
-		return err
-	}
-
-	return nil
-}
-
-// joinStrings joins a slice of strings with a separator
-func joinStrings(strings []string, separator string) string {
-	if len(strings) == 0 {
-		return ""
-	}
-	if len(strings) == 1 {
-		return strings[0]
-	}
-
-	result := strings[0]
-	for i := 1; i < len(strings); i++ {
-		result += separator + strings[i]
-	}
-	return result
 }
 
 // clusterPermissionUsesManagedServiceAccount checks if a ClusterPermission uses ManagedServiceAccount subjects
