@@ -194,11 +194,7 @@ func (r *ClusterPermissionStatusReconciler) updateClusterPermissionStatus(
 			}
 		}
 
-		// Initialize ResourceStatus if it doesn't exist
-		if newStatus.ResourceStatus == nil {
-			newStatus.ResourceStatus = &cpv1alpha1.ResourceStatus{}
-		}
-		r.updateResourceStatus(newStatus.ResourceStatus, manifestWork)
+		newStatus.ResourceStatus = r.buildResourceStatus(manifestWork)
 
 		if equality.Semantic.DeepEqual(latest.Status, newStatus) {
 			return nil
@@ -268,125 +264,42 @@ func (r *ClusterPermissionStatusReconciler) updateValidateConditions(conditions 
 	return nil
 }
 
-func (r *ClusterPermissionStatusReconciler) updateResourceStatus(resourceStatus *cpv1alpha1.ResourceStatus,
-	manifestWork *workv1.ManifestWork) {
-	// Process each manifest status
+func (r *ClusterPermissionStatusReconciler) buildResourceStatus(manifestWork *workv1.ManifestWork) *cpv1alpha1.ResourceStatus {
+	resourceStatus := &cpv1alpha1.ResourceStatus{}
+	// Process each manifest status and track which resources exist
 	for _, manifestStatus := range manifestWork.Status.ResourceStatus.Manifests {
 		switch manifestStatus.ResourceMeta.Kind {
 		case "ClusterRole":
-			r.updateClusterRoleStatus(resourceStatus, manifestStatus)
+			appliedCondition := generateResourceAppliedCondition(manifestStatus.Conditions)
+			resourceStatus.ClusterRoles = append(resourceStatus.ClusterRoles, cpv1alpha1.ClusterRoleStatus{
+				Name:       manifestStatus.ResourceMeta.Name,
+				Conditions: []metav1.Condition{appliedCondition},
+			})
+
 		case "ClusterRoleBinding":
-			r.updateClusterRoleBindingStatus(resourceStatus, manifestStatus)
+			appliedCondition := generateResourceAppliedCondition(manifestStatus.Conditions)
+			resourceStatus.ClusterRoleBindings = append(resourceStatus.ClusterRoleBindings, cpv1alpha1.ClusterRoleBindingStatus{
+				Name:       manifestStatus.ResourceMeta.Name,
+				Conditions: []metav1.Condition{appliedCondition},
+			})
 		case "Role":
-			r.updateRoleStatus(resourceStatus, manifestStatus)
+			appliedCondition := generateResourceAppliedCondition(manifestStatus.Conditions)
+			resourceStatus.Roles = append(resourceStatus.Roles, cpv1alpha1.RoleStatus{
+				Name:       manifestStatus.ResourceMeta.Name,
+				Namespace:  manifestStatus.ResourceMeta.Namespace,
+				Conditions: []metav1.Condition{appliedCondition},
+			})
 		case "RoleBinding":
-			r.updateRoleBindingStatus(resourceStatus, manifestStatus)
-		}
-	}
-}
-
-// updateClusterRoleStatus updates or adds the status for a ClusterRole
-func (r *ClusterPermissionStatusReconciler) updateClusterRoleStatus(
-	resourceStatus *cpv1alpha1.ResourceStatus,
-	manifestStatus workv1.ManifestCondition) {
-	name := manifestStatus.ResourceMeta.Name
-	appliedCondition := generateResourceAppliedCondition(manifestStatus.Conditions)
-
-	// Find existing status or create new one
-	found := false
-	for i := range resourceStatus.ClusterRoles {
-		if resourceStatus.ClusterRoles[i].Name == name {
-			meta.SetStatusCondition(&resourceStatus.ClusterRoles[i].Conditions, appliedCondition)
-			found = true
-			break
+			appliedCondition := generateResourceAppliedCondition(manifestStatus.Conditions)
+			resourceStatus.RoleBindings = append(resourceStatus.RoleBindings, cpv1alpha1.RoleBindingStatus{
+				Name:       manifestStatus.ResourceMeta.Name,
+				Namespace:  manifestStatus.ResourceMeta.Namespace,
+				Conditions: []metav1.Condition{appliedCondition},
+			})
 		}
 	}
 
-	if !found {
-		resourceStatus.ClusterRoles = append(resourceStatus.ClusterRoles, cpv1alpha1.ClusterRoleStatus{
-			Name:       name,
-			Conditions: []metav1.Condition{appliedCondition},
-		})
-	}
-}
-
-// updateClusterRoleBindingStatus updates or adds the status for a ClusterRoleBinding
-func (r *ClusterPermissionStatusReconciler) updateClusterRoleBindingStatus(
-	resourceStatus *cpv1alpha1.ResourceStatus,
-	manifestStatus workv1.ManifestCondition) {
-	name := manifestStatus.ResourceMeta.Name
-	appliedCondition := generateResourceAppliedCondition(manifestStatus.Conditions)
-
-	// Find existing status or create new one
-	found := false
-	for i := range resourceStatus.ClusterRoleBindings {
-		if resourceStatus.ClusterRoleBindings[i].Name == name {
-			meta.SetStatusCondition(&resourceStatus.ClusterRoleBindings[i].Conditions, appliedCondition)
-			found = true
-			break
-		}
-	}
-
-	if !found {
-		resourceStatus.ClusterRoleBindings = append(resourceStatus.ClusterRoleBindings, cpv1alpha1.ClusterRoleBindingStatus{
-			Name:       name,
-			Conditions: []metav1.Condition{appliedCondition},
-		})
-	}
-}
-
-// updateRoleStatus updates or adds the status for a Role
-func (r *ClusterPermissionStatusReconciler) updateRoleStatus(
-	resourceStatus *cpv1alpha1.ResourceStatus,
-	manifestStatus workv1.ManifestCondition) {
-	name := manifestStatus.ResourceMeta.Name
-	namespace := manifestStatus.ResourceMeta.Namespace
-	appliedCondition := generateResourceAppliedCondition(manifestStatus.Conditions)
-
-	// Find existing status or create new one
-	found := false
-	for i := range resourceStatus.Roles {
-		if resourceStatus.Roles[i].Name == name && resourceStatus.Roles[i].Namespace == namespace {
-			meta.SetStatusCondition(&resourceStatus.Roles[i].Conditions, appliedCondition)
-			found = true
-			break
-		}
-	}
-
-	if !found {
-		resourceStatus.Roles = append(resourceStatus.Roles, cpv1alpha1.RoleStatus{
-			Name:       name,
-			Namespace:  namespace,
-			Conditions: []metav1.Condition{appliedCondition},
-		})
-	}
-}
-
-// updateRoleBindingStatus updates or adds the status for a RoleBinding
-func (r *ClusterPermissionStatusReconciler) updateRoleBindingStatus(
-	resourceStatus *cpv1alpha1.ResourceStatus,
-	manifestStatus workv1.ManifestCondition) {
-	name := manifestStatus.ResourceMeta.Name
-	namespace := manifestStatus.ResourceMeta.Namespace
-	appliedCondition := generateResourceAppliedCondition(manifestStatus.Conditions)
-
-	// Find existing status or create new one
-	found := false
-	for i := range resourceStatus.RoleBindings {
-		if resourceStatus.RoleBindings[i].Name == name && resourceStatus.RoleBindings[i].Namespace == namespace {
-			meta.SetStatusCondition(&resourceStatus.RoleBindings[i].Conditions, appliedCondition)
-			found = true
-			break
-		}
-	}
-
-	if !found {
-		resourceStatus.RoleBindings = append(resourceStatus.RoleBindings, cpv1alpha1.RoleBindingStatus{
-			Name:       name,
-			Namespace:  namespace,
-			Conditions: []metav1.Condition{appliedCondition},
-		})
-	}
+	return resourceStatus
 }
 
 // generateResourceAppliedCondition generates Applied condition for resource

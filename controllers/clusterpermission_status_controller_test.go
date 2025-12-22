@@ -25,7 +25,9 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	workv1 "open-cluster-management.io/api/work/v1"
 	cpv1alpha1 "open-cluster-management.io/cluster-permission/api/v1alpha1"
@@ -1300,6 +1302,786 @@ func TestReconcile(t *testing.T) {
 							}
 						}
 					}
+				}
+			}
+		})
+	}
+}
+
+func TestGenerateResourceAppliedCondition(t *testing.T) {
+	now := metav1.Now()
+	cases := []struct {
+		name              string
+		conditions        []metav1.Condition
+		expectedCondition metav1.Condition
+	}{
+		{
+			name: "Applied condition is true",
+			conditions: []metav1.Condition{
+				{
+					Type:               workv1.ManifestApplied,
+					Status:             metav1.ConditionTrue,
+					LastTransitionTime: now,
+					Message:            "Successfully applied",
+				},
+			},
+			expectedCondition: metav1.Condition{
+				Type:               cpv1alpha1.ConditionTypeApplied,
+				Status:             metav1.ConditionTrue,
+				Reason:             "AppliedManifestComplete",
+				Message:            "Apply manifest complete",
+				LastTransitionTime: now,
+			},
+		},
+		{
+			name: "Applied condition is false",
+			conditions: []metav1.Condition{
+				{
+					Type:               workv1.ManifestApplied,
+					Status:             metav1.ConditionFalse,
+					LastTransitionTime: now,
+					Message:            "Failed to apply: some error",
+				},
+			},
+			expectedCondition: metav1.Condition{
+				Type:               cpv1alpha1.ConditionTypeApplied,
+				Status:             metav1.ConditionFalse,
+				Reason:             "FailedApplyManifest",
+				Message:            "Failed to apply: some error",
+				LastTransitionTime: now,
+			},
+		},
+		{
+			name:       "No Applied condition",
+			conditions: []metav1.Condition{},
+			expectedCondition: metav1.Condition{
+				Type:    cpv1alpha1.ConditionTypeApplied,
+				Status:  metav1.ConditionFalse,
+				Reason:  "FailedGetManifestCondition",
+				Message: "Failed to get the manifest condition",
+			},
+		},
+		{
+			name: "Multiple conditions with Applied condition",
+			conditions: []metav1.Condition{
+				{
+					Type:   "Available",
+					Status: metav1.ConditionTrue,
+				},
+				{
+					Type:               workv1.ManifestApplied,
+					Status:             metav1.ConditionTrue,
+					LastTransitionTime: now,
+				},
+			},
+			expectedCondition: metav1.Condition{
+				Type:               cpv1alpha1.ConditionTypeApplied,
+				Status:             metav1.ConditionTrue,
+				Reason:             "AppliedManifestComplete",
+				Message:            "Apply manifest complete",
+				LastTransitionTime: now,
+			},
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			result := generateResourceAppliedCondition(c.conditions)
+
+			if result.Type != c.expectedCondition.Type {
+				t.Errorf("expected condition type %s, got %s", c.expectedCondition.Type, result.Type)
+			}
+			if result.Status != c.expectedCondition.Status {
+				t.Errorf("expected condition status %s, got %s", c.expectedCondition.Status, result.Status)
+			}
+			if result.Reason != c.expectedCondition.Reason {
+				t.Errorf("expected condition reason %s, got %s", c.expectedCondition.Reason, result.Reason)
+			}
+			if result.Message != c.expectedCondition.Message {
+				t.Errorf("expected condition message %s, got %s", c.expectedCondition.Message, result.Message)
+			}
+			// Only check LastTransitionTime if it's set in expected condition
+			if !c.expectedCondition.LastTransitionTime.IsZero() && result.LastTransitionTime != c.expectedCondition.LastTransitionTime {
+				t.Errorf("expected LastTransitionTime %v, got %v", c.expectedCondition.LastTransitionTime, result.LastTransitionTime)
+			}
+		})
+	}
+}
+
+func TestBuildResourceStatus(t *testing.T) {
+	cases := []struct {
+		name                   string
+		manifestWork           *workv1.ManifestWork
+		expectedResourceStatus *cpv1alpha1.ResourceStatus
+	}{
+		{
+			name: "empty manifest work",
+			manifestWork: &workv1.ManifestWork{
+				Status: workv1.ManifestWorkStatus{
+					ResourceStatus: workv1.ManifestResourceStatus{
+						Manifests: []workv1.ManifestCondition{},
+					},
+				},
+			},
+			expectedResourceStatus: &cpv1alpha1.ResourceStatus{},
+		},
+		{
+			name: "all resource types present",
+			manifestWork: &workv1.ManifestWork{
+				Status: workv1.ManifestWorkStatus{
+					ResourceStatus: workv1.ManifestResourceStatus{
+						Manifests: []workv1.ManifestCondition{
+							{
+								ResourceMeta: workv1.ManifestResourceMeta{
+									Kind: "ClusterRole",
+									Name: "cr1",
+								},
+								Conditions: []metav1.Condition{
+									{Type: workv1.ManifestApplied, Status: metav1.ConditionTrue},
+								},
+							},
+							{
+								ResourceMeta: workv1.ManifestResourceMeta{
+									Kind: "ClusterRoleBinding",
+									Name: "crb1",
+								},
+								Conditions: []metav1.Condition{
+									{Type: workv1.ManifestApplied, Status: metav1.ConditionTrue},
+								},
+							},
+							{
+								ResourceMeta: workv1.ManifestResourceMeta{
+									Kind:      "Role",
+									Name:      "r1",
+									Namespace: "ns1",
+								},
+								Conditions: []metav1.Condition{
+									{Type: workv1.ManifestApplied, Status: metav1.ConditionFalse},
+								},
+							},
+							{
+								ResourceMeta: workv1.ManifestResourceMeta{
+									Kind:      "RoleBinding",
+									Name:      "rb1",
+									Namespace: "ns1",
+								},
+								Conditions: []metav1.Condition{
+									{Type: workv1.ManifestApplied, Status: metav1.ConditionTrue},
+								},
+							},
+						},
+					},
+				},
+			},
+			expectedResourceStatus: &cpv1alpha1.ResourceStatus{
+				ClusterRoles: []cpv1alpha1.ClusterRoleStatus{
+					{Name: "cr1"},
+				},
+				ClusterRoleBindings: []cpv1alpha1.ClusterRoleBindingStatus{
+					{Name: "crb1"},
+				},
+				Roles: []cpv1alpha1.RoleStatus{
+					{Name: "r1", Namespace: "ns1"},
+				},
+				RoleBindings: []cpv1alpha1.RoleBindingStatus{
+					{Name: "rb1", Namespace: "ns1"},
+				},
+			},
+		},
+		{
+			name: "resources with missing applied conditions",
+			manifestWork: &workv1.ManifestWork{
+				Status: workv1.ManifestWorkStatus{
+					ResourceStatus: workv1.ManifestResourceStatus{
+						Manifests: []workv1.ManifestCondition{
+							{
+								ResourceMeta: workv1.ManifestResourceMeta{
+									Kind: "ClusterRole",
+									Name: "cr-no-condition",
+								},
+								Conditions: []metav1.Condition{},
+							},
+						},
+					},
+				},
+			},
+			expectedResourceStatus: &cpv1alpha1.ResourceStatus{
+				ClusterRoles: []cpv1alpha1.ClusterRoleStatus{
+					{Name: "cr-no-condition"},
+				},
+			},
+		},
+		{
+			name: "non-RBAC resources are ignored",
+			manifestWork: &workv1.ManifestWork{
+				Status: workv1.ManifestWorkStatus{
+					ResourceStatus: workv1.ManifestResourceStatus{
+						Manifests: []workv1.ManifestCondition{
+							{
+								ResourceMeta: workv1.ManifestResourceMeta{
+									Kind:      "Deployment",
+									Name:      "my-deployment",
+									Namespace: "default",
+								},
+								Conditions: []metav1.Condition{
+									{Type: workv1.ManifestApplied, Status: metav1.ConditionTrue},
+								},
+							},
+							{
+								ResourceMeta: workv1.ManifestResourceMeta{
+									Kind: "ClusterRole",
+									Name: "cr1",
+								},
+								Conditions: []metav1.Condition{
+									{Type: workv1.ManifestApplied, Status: metav1.ConditionTrue},
+								},
+							},
+						},
+					},
+				},
+			},
+			expectedResourceStatus: &cpv1alpha1.ResourceStatus{
+				ClusterRoles: []cpv1alpha1.ClusterRoleStatus{
+					{Name: "cr1"},
+				},
+			},
+		},
+	}
+
+	var testscheme = scheme.Scheme
+	_ = cpv1alpha1.AddToScheme(testscheme)
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			cpsr := &ClusterPermissionStatusReconciler{
+				Scheme: testscheme,
+			}
+
+			result := cpsr.buildResourceStatus(c.manifestWork)
+
+			if len(c.expectedResourceStatus.ClusterRoles) != len(result.ClusterRoles) {
+				t.Errorf("expected %d ClusterRoles, got %d",
+					len(c.expectedResourceStatus.ClusterRoles), len(result.ClusterRoles))
+			}
+			if len(c.expectedResourceStatus.ClusterRoleBindings) != len(result.ClusterRoleBindings) {
+				t.Errorf("expected %d ClusterRoleBindings, got %d",
+					len(c.expectedResourceStatus.ClusterRoleBindings), len(result.ClusterRoleBindings))
+			}
+			if len(c.expectedResourceStatus.Roles) != len(result.Roles) {
+				t.Errorf("expected %d Roles, got %d",
+					len(c.expectedResourceStatus.Roles), len(result.Roles))
+			}
+			if len(c.expectedResourceStatus.RoleBindings) != len(result.RoleBindings) {
+				t.Errorf("expected %d RoleBindings, got %d",
+					len(c.expectedResourceStatus.RoleBindings), len(result.RoleBindings))
+			}
+		})
+	}
+}
+
+func TestReconcileEdgeCases(t *testing.T) {
+	trueVal := true
+
+	cases := []struct {
+		name            string
+		manifestWork    *workv1.ManifestWork
+		clusterPermission *cpv1alpha1.ClusterPermission
+		expectError     bool
+	}{
+		{
+			name: "ManifestWork with no owner reference",
+			manifestWork: &workv1.ManifestWork{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-mw",
+					Namespace: "cluster1",
+				},
+				Status: workv1.ManifestWorkStatus{
+					Conditions: []metav1.Condition{
+						{Type: workv1.ManifestApplied, Status: metav1.ConditionTrue},
+					},
+				},
+			},
+		},
+		{
+			name: "ManifestWork with non-controller owner reference",
+			manifestWork: &workv1.ManifestWork{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-mw",
+					Namespace: "cluster1",
+					OwnerReferences: []metav1.OwnerReference{
+						{
+							APIVersion: cpv1alpha1.GroupVersion.String(),
+							Kind:       "ClusterPermission",
+							Name:       "test-cp",
+							Controller: nil,
+						},
+					},
+				},
+				Status: workv1.ManifestWorkStatus{
+					Conditions: []metav1.Condition{
+						{Type: workv1.ManifestApplied, Status: metav1.ConditionTrue},
+					},
+				},
+			},
+		},
+		{
+			name: "ClusterPermission being deleted",
+			manifestWork: &workv1.ManifestWork{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-mw",
+					Namespace: "cluster1",
+					OwnerReferences: []metav1.OwnerReference{
+						{
+							APIVersion: cpv1alpha1.GroupVersion.String(),
+							Kind:       "ClusterPermission",
+							Name:       "test-cp",
+							Controller: &trueVal,
+						},
+					},
+				},
+				Status: workv1.ManifestWorkStatus{
+					Conditions: []metav1.Condition{
+						{Type: workv1.ManifestApplied, Status: metav1.ConditionTrue},
+					},
+				},
+			},
+			clusterPermission: &cpv1alpha1.ClusterPermission{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:              "test-cp",
+					Namespace:         "cluster1",
+					DeletionTimestamp: &metav1.Time{Time: metav1.Now().Time},
+					Finalizers:        []string{"test-finalizer"},
+				},
+			},
+		},
+		{
+			name: "ManifestWork not found - should not return error",
+			manifestWork: &workv1.ManifestWork{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "non-existent-mw",
+					Namespace: "cluster1",
+				},
+			},
+		},
+		{
+			name: "ClusterPermission not found - should not return error",
+			manifestWork: &workv1.ManifestWork{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-mw",
+					Namespace: "cluster1",
+					OwnerReferences: []metav1.OwnerReference{
+						{
+							APIVersion: cpv1alpha1.GroupVersion.String(),
+							Kind:       "ClusterPermission",
+							Name:       "non-existent-cp",
+							Controller: &trueVal,
+						},
+					},
+				},
+				Status: workv1.ManifestWorkStatus{
+					Conditions: []metav1.Condition{
+						{Type: workv1.ManifestApplied, Status: metav1.ConditionTrue},
+					},
+				},
+			},
+		},
+	}
+
+	var testscheme = scheme.Scheme
+	_ = cpv1alpha1.AddToScheme(testscheme)
+	_ = workv1.Install(testscheme)
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			var objects []client.Object
+			if c.name != "ManifestWork not found - should not return error" {
+				objects = append(objects, c.manifestWork)
+			}
+			if c.clusterPermission != nil {
+				objects = append(objects, c.clusterPermission)
+			}
+
+			fakeClient := fake.NewClientBuilder().
+				WithScheme(testscheme).
+				WithObjects(objects...).
+				WithStatusSubresource(objects...).
+				Build()
+
+			cpsr := &ClusterPermissionStatusReconciler{
+				Client: fakeClient,
+				Scheme: testscheme,
+			}
+
+			req := ctrl.Request{
+				NamespacedName: types.NamespacedName{
+					Name:      c.manifestWork.Name,
+					Namespace: c.manifestWork.Namespace,
+				},
+			}
+
+			_, err := cpsr.Reconcile(context.Background(), req)
+
+			if c.expectError && err == nil {
+				t.Errorf("expected error but got none")
+			}
+			if !c.expectError && err != nil {
+				t.Errorf("unexpected error: %v", err)
+			}
+		})
+	}
+}
+
+func TestReconcileWithStatusUpdateNoChange(t *testing.T) {
+	trueVal := true
+	falseVal := false
+
+	var testscheme = scheme.Scheme
+	_ = cpv1alpha1.AddToScheme(testscheme)
+	_ = workv1.Install(testscheme)
+
+	// Test case where status update is skipped because there's no change
+	clusterPermission := &cpv1alpha1.ClusterPermission{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-cp",
+			Namespace: "cluster1",
+			UID:       "test-uid-12345",
+		},
+		Spec: cpv1alpha1.ClusterPermissionSpec{
+			Validate: &falseVal,
+		},
+		Status: cpv1alpha1.ClusterPermissionStatus{
+			Conditions: []metav1.Condition{
+				{
+					Type:    cpv1alpha1.ConditionTypeAppliedRBACManifestWork,
+					Status:  metav1.ConditionTrue,
+					Reason:  "AppliedManifestWorkComplete",
+					Message: "Apply manifest work complete\nRun the following command to check the ManifestWork status:\nkubectl -n cluster1 get ManifestWork test-mw -o yaml",
+				},
+			},
+		},
+	}
+
+	manifestWork := &workv1.ManifestWork{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-mw",
+			Namespace: "cluster1",
+			OwnerReferences: []metav1.OwnerReference{
+				{
+					APIVersion: cpv1alpha1.GroupVersion.String(),
+					Kind:       "ClusterPermission",
+					Name:       "test-cp",
+					Controller: &trueVal,
+				},
+			},
+		},
+		Status: workv1.ManifestWorkStatus{
+			Conditions: []metav1.Condition{
+				{
+					Type:    workv1.ManifestApplied,
+					Status:  metav1.ConditionTrue,
+					Reason:  "AppliedManifestWorkComplete",
+					Message: "Apply manifest work complete",
+				},
+			},
+		},
+	}
+
+	fakeClient := fake.NewClientBuilder().
+		WithScheme(testscheme).
+		WithObjects(clusterPermission, manifestWork).
+		WithStatusSubresource(clusterPermission, manifestWork).
+		Build()
+
+	cpsr := &ClusterPermissionStatusReconciler{
+		Client: fakeClient,
+		Scheme: testscheme,
+	}
+
+	req := ctrl.Request{
+		NamespacedName: types.NamespacedName{
+			Name:      manifestWork.Name,
+			Namespace: manifestWork.Namespace,
+		},
+	}
+
+	_, err := cpsr.Reconcile(context.Background(), req)
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestUpdateClusterPermissionStatusWithRetry(t *testing.T) {
+	falseVal := false
+
+	var testscheme = scheme.Scheme
+	_ = cpv1alpha1.AddToScheme(testscheme)
+	_ = workv1.Install(testscheme)
+
+	// Create a ClusterPermission with existing status that will be updated
+	clusterPermission := &cpv1alpha1.ClusterPermission{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-cp",
+			Namespace: "cluster1",
+			UID:       "test-uid-12345",
+		},
+		Spec: cpv1alpha1.ClusterPermissionSpec{
+			Validate: &falseVal,
+		},
+		Status: cpv1alpha1.ClusterPermissionStatus{
+			Conditions: []metav1.Condition{
+				{
+					Type:    cpv1alpha1.ConditionTypeAppliedRBACManifestWork,
+					Status:  metav1.ConditionFalse,
+					Reason:  "OldReason",
+					Message: "Old message",
+				},
+			},
+		},
+	}
+
+	manifestWork := &workv1.ManifestWork{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-mw",
+			Namespace: "cluster1",
+		},
+		Status: workv1.ManifestWorkStatus{
+			Conditions: []metav1.Condition{
+				{
+					Type:    workv1.ManifestApplied,
+					Status:  metav1.ConditionTrue,
+					Reason:  "AppliedManifestWorkComplete",
+					Message: "Apply manifest work complete",
+				},
+			},
+			ResourceStatus: workv1.ManifestResourceStatus{
+				Manifests: []workv1.ManifestCondition{
+					{
+						ResourceMeta: workv1.ManifestResourceMeta{
+							Kind: "ClusterRole",
+							Name: "test-cr",
+						},
+						Conditions: []metav1.Condition{
+							{Type: workv1.ManifestApplied, Status: metav1.ConditionTrue},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	fakeClient := fake.NewClientBuilder().
+		WithScheme(testscheme).
+		WithObjects(clusterPermission, manifestWork).
+		WithStatusSubresource(clusterPermission, manifestWork).
+		Build()
+
+	cpsr := &ClusterPermissionStatusReconciler{
+		Client: fakeClient,
+		Scheme: testscheme,
+	}
+
+	// Test updateClusterPermissionStatus directly
+	err := cpsr.updateClusterPermissionStatus(context.Background(), clusterPermission, manifestWork)
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+
+	// Verify status was updated
+	var updatedCP cpv1alpha1.ClusterPermission
+	err = fakeClient.Get(context.Background(), types.NamespacedName{
+		Name:      clusterPermission.Name,
+		Namespace: clusterPermission.Namespace,
+	}, &updatedCP)
+	if err != nil {
+		t.Fatalf("failed to get updated ClusterPermission: %v", err)
+	}
+
+	appliedCond := meta.FindStatusCondition(updatedCP.Status.Conditions, cpv1alpha1.ConditionTypeAppliedRBACManifestWork)
+	if appliedCond == nil {
+		t.Errorf("expected AppliedRBACManifestWork condition but it was not found")
+	} else if appliedCond.Status != metav1.ConditionTrue {
+		t.Errorf("expected condition status True, got %s", appliedCond.Status)
+	}
+
+	if updatedCP.Status.ResourceStatus == nil {
+		t.Errorf("expected ResourceStatus to be populated but it was nil")
+	}
+}
+
+func TestFindClusterPermissionForManifestWork(t *testing.T) {
+	trueVal := true
+	falseVal := false
+
+	cases := []struct {
+		name             string
+		obj              client.Object
+		expectedRequests []reconcile.Request
+	}{
+		{
+			name: "ManifestWork with ClusterPermission controller owner",
+			obj: &workv1.ManifestWork{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-mw",
+					Namespace: "cluster1",
+					OwnerReferences: []metav1.OwnerReference{
+						{
+							APIVersion: cpv1alpha1.GroupVersion.String(),
+							Kind:       "ClusterPermission",
+							Name:       "test-cp",
+							Controller: &trueVal,
+						},
+					},
+				},
+			},
+			expectedRequests: []reconcile.Request{
+				{
+					NamespacedName: types.NamespacedName{
+						Name:      "test-mw",
+						Namespace: "cluster1",
+					},
+				},
+			},
+		},
+		{
+			name: "ManifestWork with non-controller ClusterPermission owner",
+			obj: &workv1.ManifestWork{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-mw",
+					Namespace: "cluster1",
+					OwnerReferences: []metav1.OwnerReference{
+						{
+							APIVersion: cpv1alpha1.GroupVersion.String(),
+							Kind:       "ClusterPermission",
+							Name:       "test-cp",
+							Controller: &falseVal,
+						},
+					},
+				},
+			},
+			expectedRequests: nil,
+		},
+		{
+			name: "ManifestWork with nil controller field",
+			obj: &workv1.ManifestWork{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-mw",
+					Namespace: "cluster1",
+					OwnerReferences: []metav1.OwnerReference{
+						{
+							APIVersion: cpv1alpha1.GroupVersion.String(),
+							Kind:       "ClusterPermission",
+							Name:       "test-cp",
+							Controller: nil,
+						},
+					},
+				},
+			},
+			expectedRequests: nil,
+		},
+		{
+			name: "ManifestWork with different APIVersion",
+			obj: &workv1.ManifestWork{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-mw",
+					Namespace: "cluster1",
+					OwnerReferences: []metav1.OwnerReference{
+						{
+							APIVersion: "v1",
+							Kind:       "ClusterPermission",
+							Name:       "test-cp",
+							Controller: &trueVal,
+						},
+					},
+				},
+			},
+			expectedRequests: nil,
+		},
+		{
+			name: "ManifestWork with different Kind",
+			obj: &workv1.ManifestWork{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-mw",
+					Namespace: "cluster1",
+					OwnerReferences: []metav1.OwnerReference{
+						{
+							APIVersion: cpv1alpha1.GroupVersion.String(),
+							Kind:       "SomeOtherKind",
+							Name:       "test-cp",
+							Controller: &trueVal,
+						},
+					},
+				},
+			},
+			expectedRequests: nil,
+		},
+		{
+			name: "ManifestWork with no owner references",
+			obj: &workv1.ManifestWork{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-mw",
+					Namespace: "cluster1",
+				},
+			},
+			expectedRequests: nil,
+		},
+		{
+			name: "ManifestWork with multiple owner references, one is ClusterPermission controller",
+			obj: &workv1.ManifestWork{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-mw",
+					Namespace: "cluster1",
+					OwnerReferences: []metav1.OwnerReference{
+						{
+							APIVersion: "v1",
+							Kind:       "ConfigMap",
+							Name:       "test-cm",
+							Controller: &falseVal,
+						},
+						{
+							APIVersion: cpv1alpha1.GroupVersion.String(),
+							Kind:       "ClusterPermission",
+							Name:       "test-cp",
+							Controller: &trueVal,
+						},
+					},
+				},
+			},
+			expectedRequests: []reconcile.Request{
+				{
+					NamespacedName: types.NamespacedName{
+						Name:      "test-mw",
+						Namespace: "cluster1",
+					},
+				},
+			},
+		},
+		{
+			name:             "Non-ManifestWork object",
+			obj:              &cpv1alpha1.ClusterPermission{},
+			expectedRequests: nil,
+		},
+	}
+
+	var testscheme = scheme.Scheme
+	_ = cpv1alpha1.AddToScheme(testscheme)
+	_ = workv1.Install(testscheme)
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			cpsr := &ClusterPermissionStatusReconciler{
+				Scheme: testscheme,
+			}
+
+			requests := cpsr.findClusterPermissionForManifestWork(context.Background(), c.obj)
+
+			if len(c.expectedRequests) != len(requests) {
+				t.Errorf("expected %d requests, got %d", len(c.expectedRequests), len(requests))
+				return
+			}
+
+			for i, expectedReq := range c.expectedRequests {
+				if requests[i].Name != expectedReq.Name || requests[i].Namespace != expectedReq.Namespace {
+					t.Errorf("expected request %v, got %v", expectedReq, requests[i])
 				}
 			}
 		})
