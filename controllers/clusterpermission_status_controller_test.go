@@ -1583,10 +1583,10 @@ func TestReconcileEdgeCases(t *testing.T) {
 	trueVal := true
 
 	cases := []struct {
-		name            string
-		manifestWork    *workv1.ManifestWork
+		name              string
+		manifestWork      *workv1.ManifestWork
 		clusterPermission *cpv1alpha1.ClusterPermission
-		expectError     bool
+		expectError       bool
 	}{
 		{
 			name: "ManifestWork with no owner reference",
