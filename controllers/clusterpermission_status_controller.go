@@ -2,17 +2,14 @@ package controllers
 
 import (
 	"context"
-	"k8s.io/apimachinery/pkg/api/errors"
-	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	"k8s.io/apimachinery/pkg/api/equality"
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/retry"
-	workv1 "open-cluster-management.io/api/work/v1"
-	cpv1alpha1 "open-cluster-management.io/cluster-permission/api/v1alpha1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -20,6 +17,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+
+	workv1 "open-cluster-management.io/api/work/v1"
+	cpv1alpha1 "open-cluster-management.io/cluster-permission/api/v1alpha1"
 )
 
 // ClusterPermissionStatusReconciler reconciles ManifestWork objects and updates

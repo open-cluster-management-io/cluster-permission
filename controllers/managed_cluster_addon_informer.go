@@ -43,7 +43,7 @@ type ManagedClusterAddOnInformer struct {
 	// stopCh is used to signal the informer to stop
 	stopCh chan struct{}
 	// workqueue is used to queue events for processing
-	workqueue workqueue.RateLimitingInterface
+	workqueue workqueue.TypedRateLimitingInterface[string]
 	// informer is the Kubernetes informer
 	informer cache.SharedIndexInformer
 	// eventHandler is the function to call when events occur
@@ -92,9 +92,9 @@ func NewManagedClusterAddOnInformer(config *rest.Config, eventHandler func(obj *
 	)
 
 	// Create workqueue with rate limiting
-	workqueue := workqueue.NewNamedRateLimitingQueue(
-		workqueue.DefaultControllerRateLimiter(),
-		"ManagedClusterAddOnInformer",
+	workqueue := workqueue.NewTypedRateLimitingQueueWithConfig(
+		workqueue.DefaultTypedControllerRateLimiter[string](),
+		workqueue.TypedRateLimitingQueueConfig[string]{Name: "ManagedClusterAddOnInformer"},
 	)
 
 	return &ManagedClusterAddOnInformer{
@@ -187,53 +187,20 @@ func (i *ManagedClusterAddOnInformer) runWorker() {
 
 // processNextWorkItem processes the next item in the work queue
 func (i *ManagedClusterAddOnInformer) processNextWorkItem() bool {
-	obj, shutdown := i.workqueue.Get()
+	key, shutdown := i.workqueue.Get()
 	if shutdown {
 		return false
 	}
+	defer i.workqueue.Done(key)
 
-	// We wrap this block in a func so we can defer c.workqueue.Done.
-	err := func(obj any) error {
-		// We call Done here so the workqueue knows we have finished
-		// processing this item. We also must remember to call Forget if we
-		// do not want this work item being re-queued. For example, we do
-		// not call Forget if a transient error occurs, instead the item is
-		// put back on the workqueue and attempted again after a back-off
-		// period.
-		defer i.workqueue.Done(obj)
-		var key string
-		var ok bool
-		// We expect strings to come off the workqueue. These are of the
-		// form namespace/name. We do this as the delayed nature of the
-		// workqueue means the items in the informer cache may actually be
-		// more up to date than when the item was initially put onto the
-		// workqueue.
-		if key, ok = obj.(string); !ok {
-			// As the item in the workqueue is actually invalid, we call
-			// Forget here else we'd go into a loop of attempting to
-			// process a work item that is invalid.
-			i.workqueue.Forget(obj)
-			i.logger.Error(nil, "expected string in workqueue but got %#v", obj)
-			return nil
-		}
-		// Run the syncHandler, passing it the namespace/name string of the
-		// resource to be synced.
-		if err := i.syncHandler(key); err != nil {
-			// Put the item back on the workqueue to handle any transient errors.
-			i.workqueue.AddRateLimited(key)
-			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
-		}
-		// Finally, if no error occurs we Forget this item so it does not
-		// get queued again until another change happens.
-		i.workqueue.Forget(obj)
-		return nil
-	}(obj)
-
-	if err != nil {
-		i.logger.Error(err, "error processing work item")
+	if err := i.syncHandler(key); err != nil {
+		// Put the item back on the workqueue to handle any transient errors.
+		i.workqueue.AddRateLimited(key)
+		i.logger.Error(err, "error processing work item", "key", key)
 		return true
 	}
 
+	i.workqueue.Forget(key)
 	return true
 }
 
