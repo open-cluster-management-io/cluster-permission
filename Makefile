@@ -1,18 +1,10 @@
 
 # Image URL to use all building/pushing image targets
 IMG ?= quay.io/open-cluster-management/cluster-permission:latest
-# ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
-ENVTEST_K8S_VERSION = 1.26.0
 
 export CGO_ENABLED=1
 
-TEST_TMP :=/tmp
-export KUBEBUILDER_ASSETS ?=$(TEST_TMP)/kubebuilder/bin
-K8S_VERSION ?=1.24.1
-GOHOSTOS ?=$(shell go env GOHOSTOS)
-GOHOSTARCH ?= $(shell go env GOHOSTARCH)
-KB_TOOLS_ARCHIVE_NAME :=kubebuilder-tools-$(K8S_VERSION)-$(GOHOSTOS)-$(GOHOSTARCH).tar.gz
-KB_TOOLS_ARCHIVE_PATH := $(TEST_TMP)/$(KB_TOOLS_ARCHIVE_NAME)
+ENSURE_ENVTEST_SCRIPT := https://raw.githubusercontent.com/open-cluster-management-io/sdk-go/main/ci/envtest/ensure-envtest.sh
 
 # Setting SHELL to bash allows bash commands to be executed by recipes.
 # Options are set to exit when a recipe line exits non-zero or a piped command fails.
@@ -139,7 +131,6 @@ $(LOCALBIN):
 ## Tool Binaries
 KUSTOMIZE ?= $(LOCALBIN)/kustomize
 CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen
-ENVTEST ?= $(LOCALBIN)/setup-envtest
 
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v3.8.7
@@ -161,21 +152,13 @@ $(CONTROLLER_GEN): $(LOCALBIN)
 	test -s $(LOCALBIN)/controller-gen && $(LOCALBIN)/controller-gen --version | grep -q $(CONTROLLER_TOOLS_VERSION) || \
 	GOBIN=$(LOCALBIN) go install sigs.k8s.io/controller-tools/cmd/controller-gen@$(CONTROLLER_TOOLS_VERSION)
 
+.PHONY: envtest-setup
+envtest-setup:
+	$(eval export KUBEBUILDER_ASSETS=$(shell curl -fsSL $(ENSURE_ENVTEST_SCRIPT) | bash))
+	@echo "KUBEBUILDER_ASSETS=$(KUBEBUILDER_ASSETS)"
+
 .PHONY: test
-
-# download the kubebuilder-tools to get kube-apiserver binaries from it
-ensure-kubebuilder-tools:
-ifeq "" "$(wildcard $(KUBEBUILDER_ASSETS))"
-	$(info Downloading kube-apiserver into '$(KUBEBUILDER_ASSETS)')
-	mkdir -p '$(KUBEBUILDER_ASSETS)'
-	curl -s -f -L https://storage.googleapis.com/kubebuilder-tools/$(KB_TOOLS_ARCHIVE_NAME) -o '$(KB_TOOLS_ARCHIVE_PATH)'
-	tar -C '$(KUBEBUILDER_ASSETS)' --strip-components=2 -zvxf '$(KB_TOOLS_ARCHIVE_PATH)'
-else
-	$(info Using existing kube-apiserver from "$(KUBEBUILDER_ASSETS)")
-endif
-.PHONY: ensure-kubebuilder-tools
-
-test: ensure-kubebuilder-tools
+test: envtest-setup
 	go test -timeout 300s -v ./controllers/... -coverprofile=coverage.out
 
 .PHONY: deploy-ocm
