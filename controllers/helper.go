@@ -20,6 +20,7 @@ import (
 	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+
 	workv1 "open-cluster-management.io/api/work/v1"
 	cpv1alpha1 "open-cluster-management.io/cluster-permission/api/v1alpha1"
 )
@@ -75,7 +76,8 @@ func extractRoleReferencesForValidation(clusterPermission *cpv1alpha1.ClusterPer
 	// Extract Role references from RoleBindings
 	if clusterPermission.Spec.RoleBindings != nil {
 		for _, rb := range *clusterPermission.Spec.RoleBindings {
-			if rb.RoleRef.Kind == "Role" {
+			switch rb.RoleRef.Kind {
+			case "Role":
 				// For roles, we need to know the namespace
 				namespace := rb.Namespace
 				if namespace != "" {
@@ -89,7 +91,7 @@ func extractRoleReferencesForValidation(clusterPermission *cpv1alpha1.ClusterPer
 						seenRefs[key] = true
 					}
 				}
-			} else if rb.RoleRef.Kind == "ClusterRole" {
+			case "ClusterRole":
 				key := "ClusterRole:" + rb.RoleRef.Name
 				if !seenRefs[key] {
 					roleRefs = append(roleRefs, ValidationRoleRef{
@@ -140,7 +142,8 @@ func buildManifestWork(clusterPermission cpv1alpha1.ClusterPermission, manifestW
 
 	if validateCP && len(roleRefs) > 0 {
 		for _, roleRef := range roleRefs {
-			if roleRef.Kind == "ClusterRole" {
+			switch roleRef.Kind {
+			case "ClusterRole":
 				manifestConfigs = append(manifestConfigs, workv1.ManifestConfigOption{
 					ResourceIdentifier: workv1.ResourceIdentifier{
 						Group:    "rbac.authorization.k8s.io",
@@ -160,7 +163,7 @@ func buildManifestWork(clusterPermission cpv1alpha1.ClusterPermission, manifestW
 						Name: roleRef.Name,
 					},
 				}}})
-			} else if roleRef.Kind == "Role" {
+			case "Role":
 				manifestConfigs = append(manifestConfigs, workv1.ManifestConfigOption{
 					ResourceIdentifier: workv1.ResourceIdentifier{
 						Group:     "rbac.authorization.k8s.io",
