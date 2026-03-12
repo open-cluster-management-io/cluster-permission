@@ -37,6 +37,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
+
 	addonv1alpha1 "open-cluster-management.io/api/addon/v1alpha1"
 	clusterv1 "open-cluster-management.io/api/cluster/v1"
 	workv1 "open-cluster-management.io/api/work/v1"
@@ -44,8 +45,6 @@ import (
 	msav1beta1 "open-cluster-management.io/managed-serviceaccount/apis/authentication/v1beta1"
 	msacommon "open-cluster-management.io/managed-serviceaccount/pkg/common"
 )
-
-const VALIDATION_MW_RETRY_INTERVAL = 10 * time.Second
 
 // ClusterPermissionReconciler reconciles a ClusterPermission object
 type ClusterPermissionReconciler struct {
@@ -285,7 +284,7 @@ func (r *ClusterPermissionReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	err = r.Get(ctx, types.NamespacedName{Name: mwName, Namespace: clusterPermission.Namespace}, &mw)
 	if apierrors.IsNotFound(err) {
 		log.Info("creating ManifestWork")
-		err = r.Client.Create(ctx, manifestWork)
+		err = r.Create(ctx, manifestWork)
 		if err != nil {
 			log.Error(err, "unable to create ManifestWork")
 			return ctrl.Result{}, err
@@ -295,7 +294,7 @@ func (r *ClusterPermissionReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		if !equality.Semantic.DeepEqual(mw.Spec, manifestWork.Spec) {
 			log.Info("updating ManifestWork - spec has changed")
 			mw.Spec = manifestWork.Spec
-			err = r.Client.Update(ctx, &mw)
+			err = r.Update(ctx, &mw)
 			if err != nil {
 				log.Error(err, "unable to update ManifestWork")
 				return ctrl.Result{}, err
@@ -355,13 +354,12 @@ func (r *ClusterPermissionReconciler) validateSubject(ctx context.Context, subje
 func getSubjects(subject *rbacv1.Subject, subjects []rbacv1.Subject) []rbacv1.Subject {
 	if len(subjects) > 0 {
 		return subjects
-	} else {
-		// should be safe since one of them has to exist due to CRD validation
-		if subject == nil {
-			return []rbacv1.Subject{}
-		}
-		return []rbacv1.Subject{*subject}
 	}
+	// should be safe since one of them has to exist due to CRD validation
+	if subject == nil {
+		return []rbacv1.Subject{}
+	}
+	return []rbacv1.Subject{*subject}
 }
 
 // generateSubjects checks if the subjects in the subjects array is a ManagedServiceAccount
@@ -530,7 +528,7 @@ func (r *ClusterPermissionReconciler) generateManifestWorkPayload(ctx context.Co
 				}
 
 				nsList := &corev1.NamespaceList{}
-				if err = r.Client.List(ctx, nsList, &client.ListOptions{LabelSelector: labelSelector}); err != nil {
+				if err = r.List(ctx, nsList, &client.ListOptions{LabelSelector: labelSelector}); err != nil {
 					return nil, nil, nil, nil, nil, err
 				}
 
@@ -587,7 +585,7 @@ func (r *ClusterPermissionReconciler) generateManifestWorkPayload(ctx context.Co
 				}
 
 				nsList := &corev1.NamespaceList{}
-				if err = r.Client.List(ctx, nsList, &client.ListOptions{LabelSelector: labelSelector}); err != nil {
+				if err = r.List(ctx, nsList, &client.ListOptions{LabelSelector: labelSelector}); err != nil {
 					return nil, nil, nil, nil, nil, err
 				}
 

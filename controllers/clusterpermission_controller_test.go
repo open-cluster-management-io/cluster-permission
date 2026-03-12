@@ -672,7 +672,7 @@ var _ = Describe("ClusterPermission controller", func() {
 				},
 			}))).Should(Equal(1))
 
-			By("Create ClusterPermission with ClusterRoleBinding that has no subject or subjects")
+			By("Create ClusterPermission with ClusterRoleBinding that has no subject or subjects should be rejected by CRD validation")
 			clusterPermissionMissingSubjectSubjects := cpv1alpha1.ClusterPermission{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "clusterpermission-no-subject-subjects",
@@ -690,7 +690,7 @@ var _ = Describe("ClusterPermission controller", func() {
 				},
 			}
 
-			Expect(k8sClient.Create(ctx, &clusterPermissionMissingSubjectSubjects)).Should(Succeed())
+			Expect(k8sClient.Create(ctx, &clusterPermissionMissingSubjectSubjects)).ShouldNot(Succeed())
 
 			By("Create ClusterPermission with Role and ClusterRole that doesn't exist validate should have error status")
 			clusterPermissionRoleClusterRoleNotExistValidate := cpv1alpha1.ClusterPermission{

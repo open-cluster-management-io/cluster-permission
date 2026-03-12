@@ -20,6 +20,9 @@ vendor/*
 
 !vendor/**/zz_generated.*
 
+# envtest cached binaries
+_output/
+
 # editor and IDE paraphernalia
 .idea
 *.swp

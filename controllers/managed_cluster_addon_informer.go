@@ -43,7 +43,7 @@ type ManagedClusterAddOnInformer struct {
 	// stopCh is used to signal the informer to stop
 	stopCh chan struct{}
 	// workqueue is used to queue events for processing
-	workqueue workqueue.RateLimitingInterface
+	workqueue workqueue.TypedRateLimitingInterface[any]
 	// informer is the Kubernetes informer
 	informer cache.SharedIndexInformer
 	// eventHandler is the function to call when events occur
@@ -93,7 +93,7 @@ func NewManagedClusterAddOnInformer(config *rest.Config, eventHandler func(obj *
 
 	// Create workqueue with rate limiting
 	workqueue := workqueue.NewNamedRateLimitingQueue(
-		workqueue.DefaultControllerRateLimiter(),
+		workqueue.DefaultTypedControllerRateLimiter[any](),
 		"ManagedClusterAddOnInformer",
 	)
 

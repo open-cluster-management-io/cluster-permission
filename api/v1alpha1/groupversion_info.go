@@ -20,8 +20,6 @@ limitations under the License.
 package v1alpha1
 
 import (
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	runtime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/scheme"
 )
@@ -45,14 +43,4 @@ var (
 // DEPRECATED
 func Resource(resource string) schema.GroupResource {
 	return schema.GroupResource{Group: GroupVersion.Group, Resource: resource}
-}
-
-// Adds the list of known types to api.Scheme.
-func addKnownTypes(scheme *runtime.Scheme) error {
-	scheme.AddKnownTypes(GroupVersion,
-		&ClusterPermission{},
-		&ClusterPermissionList{},
-	)
-	metav1.AddToGroupVersion(scheme, GroupVersion)
-	return nil
 }
