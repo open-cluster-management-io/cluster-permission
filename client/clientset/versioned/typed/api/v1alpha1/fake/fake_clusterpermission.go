@@ -18,129 +18,34 @@ limitations under the License.
 package fake
 
 import (
-	"context"
-
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	labels "k8s.io/apimachinery/pkg/labels"
-	types "k8s.io/apimachinery/pkg/types"
-	watch "k8s.io/apimachinery/pkg/watch"
-	testing "k8s.io/client-go/testing"
+	gentype "k8s.io/client-go/gentype"
 	v1alpha1 "open-cluster-management.io/cluster-permission/api/v1alpha1"
+	apiv1alpha1 "open-cluster-management.io/cluster-permission/client/clientset/versioned/typed/api/v1alpha1"
 )
 
-// FakeClusterPermissions implements ClusterPermissionInterface
-type FakeClusterPermissions struct {
+// fakeClusterPermissions implements ClusterPermissionInterface
+type fakeClusterPermissions struct {
+	*gentype.FakeClientWithList[*v1alpha1.ClusterPermission, *v1alpha1.ClusterPermissionList]
 	Fake *FakeApiV1alpha1
-	ns   string
 }
 
-var clusterpermissionsResource = v1alpha1.SchemeGroupVersion.WithResource("clusterpermissions")
-
-var clusterpermissionsKind = v1alpha1.SchemeGroupVersion.WithKind("ClusterPermission")
-
-// Get takes name of the clusterPermission, and returns the corresponding clusterPermission object, and an error if there is any.
-func (c *FakeClusterPermissions) Get(ctx context.Context, name string, options v1.GetOptions) (result *v1alpha1.ClusterPermission, err error) {
-	emptyResult := &v1alpha1.ClusterPermission{}
-	obj, err := c.Fake.
-		Invokes(testing.NewGetActionWithOptions(clusterpermissionsResource, c.ns, name, options), emptyResult)
-
-	if obj == nil {
-		return emptyResult, err
+func newFakeClusterPermissions(fake *FakeApiV1alpha1, namespace string) apiv1alpha1.ClusterPermissionInterface {
+	return &fakeClusterPermissions{
+		gentype.NewFakeClientWithList[*v1alpha1.ClusterPermission, *v1alpha1.ClusterPermissionList](
+			fake.Fake,
+			namespace,
+			v1alpha1.SchemeGroupVersion.WithResource("clusterpermissions"),
+			v1alpha1.SchemeGroupVersion.WithKind("ClusterPermission"),
+			func() *v1alpha1.ClusterPermission { return &v1alpha1.ClusterPermission{} },
+			func() *v1alpha1.ClusterPermissionList { return &v1alpha1.ClusterPermissionList{} },
+			func(dst, src *v1alpha1.ClusterPermissionList) { dst.ListMeta = src.ListMeta },
+			func(list *v1alpha1.ClusterPermissionList) []*v1alpha1.ClusterPermission {
+				return gentype.ToPointerSlice(list.Items)
+			},
+			func(list *v1alpha1.ClusterPermissionList, items []*v1alpha1.ClusterPermission) {
+				list.Items = gentype.FromPointerSlice(items)
+			},
+		),
+		fake,
 	}
-	return obj.(*v1alpha1.ClusterPermission), err
-}
-
-// List takes label and field selectors, and returns the list of ClusterPermissions that match those selectors.
-func (c *FakeClusterPermissions) List(ctx context.Context, opts v1.ListOptions) (result *v1alpha1.ClusterPermissionList, err error) {
-	emptyResult := &v1alpha1.ClusterPermissionList{}
-	obj, err := c.Fake.
-		Invokes(testing.NewListActionWithOptions(clusterpermissionsResource, clusterpermissionsKind, c.ns, opts), emptyResult)
-
-	if obj == nil {
-		return emptyResult, err
-	}
-
-	label, _, _ := testing.ExtractFromListOptions(opts)
-	if label == nil {
-		label = labels.Everything()
-	}
-	list := &v1alpha1.ClusterPermissionList{ListMeta: obj.(*v1alpha1.ClusterPermissionList).ListMeta}
-	for _, item := range obj.(*v1alpha1.ClusterPermissionList).Items {
-		if label.Matches(labels.Set(item.Labels)) {
-			list.Items = append(list.Items, item)
-		}
-	}
-	return list, err
-}
-
-// Watch returns a watch.Interface that watches the requested clusterPermissions.
-func (c *FakeClusterPermissions) Watch(ctx context.Context, opts v1.ListOptions) (watch.Interface, error) {
-	return c.Fake.
-		InvokesWatch(testing.NewWatchActionWithOptions(clusterpermissionsResource, c.ns, opts))
-
-}
-
-// Create takes the representation of a clusterPermission and creates it.  Returns the server's representation of the clusterPermission, and an error, if there is any.
-func (c *FakeClusterPermissions) Create(ctx context.Context, clusterPermission *v1alpha1.ClusterPermission, opts v1.CreateOptions) (result *v1alpha1.ClusterPermission, err error) {
-	emptyResult := &v1alpha1.ClusterPermission{}
-	obj, err := c.Fake.
-		Invokes(testing.NewCreateActionWithOptions(clusterpermissionsResource, c.ns, clusterPermission, opts), emptyResult)
-
-	if obj == nil {
-		return emptyResult, err
-	}
-	return obj.(*v1alpha1.ClusterPermission), err
-}
-
-// Update takes the representation of a clusterPermission and updates it. Returns the server's representation of the clusterPermission, and an error, if there is any.
-func (c *FakeClusterPermissions) Update(ctx context.Context, clusterPermission *v1alpha1.ClusterPermission, opts v1.UpdateOptions) (result *v1alpha1.ClusterPermission, err error) {
-	emptyResult := &v1alpha1.ClusterPermission{}
-	obj, err := c.Fake.
-		Invokes(testing.NewUpdateActionWithOptions(clusterpermissionsResource, c.ns, clusterPermission, opts), emptyResult)
-
-	if obj == nil {
-		return emptyResult, err
-	}
-	return obj.(*v1alpha1.ClusterPermission), err
-}
-
-// UpdateStatus was generated because the type contains a Status member.
-// Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
-func (c *FakeClusterPermissions) UpdateStatus(ctx context.Context, clusterPermission *v1alpha1.ClusterPermission, opts v1.UpdateOptions) (result *v1alpha1.ClusterPermission, err error) {
-	emptyResult := &v1alpha1.ClusterPermission{}
-	obj, err := c.Fake.
-		Invokes(testing.NewUpdateSubresourceActionWithOptions(clusterpermissionsResource, "status", c.ns, clusterPermission, opts), emptyResult)
-
-	if obj == nil {
-		return emptyResult, err
-	}
-	return obj.(*v1alpha1.ClusterPermission), err
-}
-
-// Delete takes name of the clusterPermission and deletes it. Returns an error if one occurs.
-func (c *FakeClusterPermissions) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
-	_, err := c.Fake.
-		Invokes(testing.NewDeleteActionWithOptions(clusterpermissionsResource, c.ns, name, opts), &v1alpha1.ClusterPermission{})
-
-	return err
-}
-
-// DeleteCollection deletes a collection of objects.
-func (c *FakeClusterPermissions) DeleteCollection(ctx context.Context, opts v1.DeleteOptions, listOpts v1.ListOptions) error {
-	action := testing.NewDeleteCollectionActionWithOptions(clusterpermissionsResource, c.ns, opts, listOpts)
-
-	_, err := c.Fake.Invokes(action, &v1alpha1.ClusterPermissionList{})
-	return err
-}
-
-// Patch applies the patch and returns the patched clusterPermission.
-func (c *FakeClusterPermissions) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *v1alpha1.ClusterPermission, err error) {
-	emptyResult := &v1alpha1.ClusterPermission{}
-	obj, err := c.Fake.
-		Invokes(testing.NewPatchSubresourceActionWithOptions(clusterpermissionsResource, c.ns, name, pt, data, opts, subresources...), emptyResult)
-
-	if obj == nil {
-		return emptyResult, err
-	}
-	return obj.(*v1alpha1.ClusterPermission), err
 }
