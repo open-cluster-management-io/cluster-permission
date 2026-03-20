@@ -200,32 +200,83 @@ kubectl logs -n cluster-permission-system deployment/cluster-permission-controll
 
 ## Development
 
-### Building from Source
+### Building and Testing
 
 ```bash
+# Install CRDs to cluster
+make install
+
+# Run controller locally (requires access to OCM hub cluster)
+make run
+
 # Build the binary
 make build
-
-# Build Docker image
-make docker-build
 
 # Run tests
 make test
 
-# Generate CRDs
-make manifests
+# Run end-to-end tests (deploys OCM first)
+make test-e2e
 
-# Update generated code
-make generate
+# Build Docker image
+make docker-build
+
+# Deploy to cluster
+make deploy
+
+# Remove from cluster
+make undeploy
 ```
 
 ### Code Generation
 
 After modifying API types, regenerate code:
 ```bash
-make generate
+# Generate manifests (CRDs, RBAC, etc.)
 make manifests
+
+# Generate deepcopy methods and client code
+make generate
+
+# Combined pre-build tasks (deps, manifests, generate, fmt, vet)
+make pre-build
 ```
+
+### Dependencies and Linting
+
+```bash
+# Update Go dependencies
+make deps
+
+# Format code
+make fmt
+
+# Run go vet
+make vet
+```
+
+### Testing Framework
+
+- Uses Ginkgo/Gomega for testing
+- Controller tests in `controllers/clusterpermission_controller_test.go`
+- Test suite setup in `controllers/suite_test.go`
+- E2E tests in `e2e/` directory
+- Tests require OCM environment for full functionality
+
+### Code Structure
+
+- **API Types** (`api/v1alpha1/`): Follow Kubernetes API conventions with `+optional` markers. Condition types defined as constants.
+- **Controller** (`controllers/`): Standard controller-runtime reconciler pattern. Uses ManifestWork to deploy RBAC to managed clusters. Status conditions track reconciliation state.
+- **Generated Client** (`client/`): Auto-generated Kubernetes client code. Update with `make generate` after API changes.
+- **Configuration** (`config/`): Kubernetes manifests for CRDs, RBAC, and deployment.
+
+### Important Files
+
+- `main.go`: Controller manager entry point with scheme registration
+- `api/v1alpha1/clusterpermission_types.go`: Core API types and specifications
+- `controllers/clusterpermission_controller.go`: Main reconciliation logic
+- `controllers/helper.go`: Utility functions for manifest generation
+- `config/samples/`: Example ClusterPermission resources for testing
 
 ## Community and Support
 
