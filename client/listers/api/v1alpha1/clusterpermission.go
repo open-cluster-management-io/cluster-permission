@@ -18,10 +18,10 @@ limitations under the License.
 package v1alpha1
 
 import (
-	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/client-go/listers"
-	"k8s.io/client-go/tools/cache"
-	v1alpha1 "open-cluster-management.io/cluster-permission/api/v1alpha1"
+	labels "k8s.io/apimachinery/pkg/labels"
+	listers "k8s.io/client-go/listers"
+	cache "k8s.io/client-go/tools/cache"
+	apiv1alpha1 "open-cluster-management.io/cluster-permission/api/v1alpha1"
 )
 
 // ClusterPermissionLister helps list ClusterPermissions.
@@ -29,7 +29,7 @@ import (
 type ClusterPermissionLister interface {
 	// List lists all ClusterPermissions in the indexer.
 	// Objects returned here must be treated as read-only.
-	List(selector labels.Selector) (ret []*v1alpha1.ClusterPermission, err error)
+	List(selector labels.Selector) (ret []*apiv1alpha1.ClusterPermission, err error)
 	// ClusterPermissions returns an object that can list and get ClusterPermissions.
 	ClusterPermissions(namespace string) ClusterPermissionNamespaceLister
 	ClusterPermissionListerExpansion
@@ -37,17 +37,17 @@ type ClusterPermissionLister interface {
 
 // clusterPermissionLister implements the ClusterPermissionLister interface.
 type clusterPermissionLister struct {
-	listers.ResourceIndexer[*v1alpha1.ClusterPermission]
+	listers.ResourceIndexer[*apiv1alpha1.ClusterPermission]
 }
 
 // NewClusterPermissionLister returns a new ClusterPermissionLister.
 func NewClusterPermissionLister(indexer cache.Indexer) ClusterPermissionLister {
-	return &clusterPermissionLister{listers.New[*v1alpha1.ClusterPermission](indexer, v1alpha1.Resource("clusterpermission"))}
+	return &clusterPermissionLister{listers.New[*apiv1alpha1.ClusterPermission](indexer, apiv1alpha1.Resource("clusterpermission"))}
 }
 
 // ClusterPermissions returns an object that can list and get ClusterPermissions.
 func (s *clusterPermissionLister) ClusterPermissions(namespace string) ClusterPermissionNamespaceLister {
-	return clusterPermissionNamespaceLister{listers.NewNamespaced[*v1alpha1.ClusterPermission](s.ResourceIndexer, namespace)}
+	return clusterPermissionNamespaceLister{listers.NewNamespaced[*apiv1alpha1.ClusterPermission](s.ResourceIndexer, namespace)}
 }
 
 // ClusterPermissionNamespaceLister helps list and get ClusterPermissions.
@@ -55,15 +55,15 @@ func (s *clusterPermissionLister) ClusterPermissions(namespace string) ClusterPe
 type ClusterPermissionNamespaceLister interface {
 	// List lists all ClusterPermissions in the indexer for a given namespace.
 	// Objects returned here must be treated as read-only.
-	List(selector labels.Selector) (ret []*v1alpha1.ClusterPermission, err error)
+	List(selector labels.Selector) (ret []*apiv1alpha1.ClusterPermission, err error)
 	// Get retrieves the ClusterPermission from the indexer for a given namespace and name.
 	// Objects returned here must be treated as read-only.
-	Get(name string) (*v1alpha1.ClusterPermission, error)
+	Get(name string) (*apiv1alpha1.ClusterPermission, error)
 	ClusterPermissionNamespaceListerExpansion
 }
 
 // clusterPermissionNamespaceLister implements the ClusterPermissionNamespaceLister
 // interface.
 type clusterPermissionNamespaceLister struct {
-	listers.ResourceIndexer[*v1alpha1.ClusterPermission]
+	listers.ResourceIndexer[*apiv1alpha1.ClusterPermission]
 }

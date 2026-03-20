@@ -18,13 +18,13 @@ limitations under the License.
 package v1alpha1
 
 import (
-	"context"
+	context "context"
 
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	types "k8s.io/apimachinery/pkg/types"
 	watch "k8s.io/apimachinery/pkg/watch"
 	gentype "k8s.io/client-go/gentype"
-	v1alpha1 "open-cluster-management.io/cluster-permission/api/v1alpha1"
+	apiv1alpha1 "open-cluster-management.io/cluster-permission/api/v1alpha1"
 	scheme "open-cluster-management.io/cluster-permission/client/clientset/versioned/scheme"
 )
 
@@ -36,33 +36,34 @@ type ClusterPermissionsGetter interface {
 
 // ClusterPermissionInterface has methods to work with ClusterPermission resources.
 type ClusterPermissionInterface interface {
-	Create(ctx context.Context, clusterPermission *v1alpha1.ClusterPermission, opts v1.CreateOptions) (*v1alpha1.ClusterPermission, error)
-	Update(ctx context.Context, clusterPermission *v1alpha1.ClusterPermission, opts v1.UpdateOptions) (*v1alpha1.ClusterPermission, error)
+	Create(ctx context.Context, clusterPermission *apiv1alpha1.ClusterPermission, opts v1.CreateOptions) (*apiv1alpha1.ClusterPermission, error)
+	Update(ctx context.Context, clusterPermission *apiv1alpha1.ClusterPermission, opts v1.UpdateOptions) (*apiv1alpha1.ClusterPermission, error)
 	// Add a +genclient:noStatus comment above the type to avoid generating UpdateStatus().
-	UpdateStatus(ctx context.Context, clusterPermission *v1alpha1.ClusterPermission, opts v1.UpdateOptions) (*v1alpha1.ClusterPermission, error)
+	UpdateStatus(ctx context.Context, clusterPermission *apiv1alpha1.ClusterPermission, opts v1.UpdateOptions) (*apiv1alpha1.ClusterPermission, error)
 	Delete(ctx context.Context, name string, opts v1.DeleteOptions) error
 	DeleteCollection(ctx context.Context, opts v1.DeleteOptions, listOpts v1.ListOptions) error
-	Get(ctx context.Context, name string, opts v1.GetOptions) (*v1alpha1.ClusterPermission, error)
-	List(ctx context.Context, opts v1.ListOptions) (*v1alpha1.ClusterPermissionList, error)
+	Get(ctx context.Context, name string, opts v1.GetOptions) (*apiv1alpha1.ClusterPermission, error)
+	List(ctx context.Context, opts v1.ListOptions) (*apiv1alpha1.ClusterPermissionList, error)
 	Watch(ctx context.Context, opts v1.ListOptions) (watch.Interface, error)
-	Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *v1alpha1.ClusterPermission, err error)
+	Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *apiv1alpha1.ClusterPermission, err error)
 	ClusterPermissionExpansion
 }
 
 // clusterPermissions implements ClusterPermissionInterface
 type clusterPermissions struct {
-	*gentype.ClientWithList[*v1alpha1.ClusterPermission, *v1alpha1.ClusterPermissionList]
+	*gentype.ClientWithList[*apiv1alpha1.ClusterPermission, *apiv1alpha1.ClusterPermissionList]
 }
 
 // newClusterPermissions returns a ClusterPermissions
 func newClusterPermissions(c *ApiV1alpha1Client, namespace string) *clusterPermissions {
 	return &clusterPermissions{
-		gentype.NewClientWithList[*v1alpha1.ClusterPermission, *v1alpha1.ClusterPermissionList](
+		gentype.NewClientWithList[*apiv1alpha1.ClusterPermission, *apiv1alpha1.ClusterPermissionList](
 			"clusterpermissions",
 			c.RESTClient(),
 			scheme.ParameterCodec,
 			namespace,
-			func() *v1alpha1.ClusterPermission { return &v1alpha1.ClusterPermission{} },
-			func() *v1alpha1.ClusterPermissionList { return &v1alpha1.ClusterPermissionList{} }),
+			func() *apiv1alpha1.ClusterPermission { return &apiv1alpha1.ClusterPermission{} },
+			func() *apiv1alpha1.ClusterPermissionList { return &apiv1alpha1.ClusterPermissionList{} },
+		),
 	}
 }
