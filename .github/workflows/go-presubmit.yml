@@ -15,6 +15,7 @@ env:
   # Common versions
   GO_VERSION: '1.25'
   GO_REQUIRED_MIN_VERSION: ''
+  KUBERNETES_VERSION: 'v1.32.2'
   GOPATH: '/home/runner/work/cluster-permission/cluster-permission/go'
 defaults:
   run:
@@ -26,12 +27,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3
         with:
           fetch-depth: 1
           path: go/src/github.com/open-cluster-management/cluster-permission
       - name: install Go
-        uses: actions/setup-go@v3
+        uses: actions/setup-go@be3c94b385c4f180051c996d336f57a34c397495 # v3
         with:
           go-version: ${{ env.GO_VERSION }}
       - name: pre-build
@@ -44,12 +45,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3
         with:
           fetch-depth: 1
           path: go/src/github.com/open-cluster-management/cluster-permission
       - name: install Go
-        uses: actions/setup-go@v3
+        uses: actions/setup-go@be3c94b385c4f180051c996d336f57a34c397495 # v3
         with:
           go-version: ${{ env.GO_VERSION }}
       - name: install imagebuilder
@@ -62,18 +63,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3
         with:
           fetch-depth: 1
           path: go/src/github.com/open-cluster-management/cluster-permission
       - name: install Go
-        uses: actions/setup-go@v3
+        uses: actions/setup-go@be3c94b385c4f180051c996d336f57a34c397495 # v3
         with:
           go-version: ${{ env.GO_VERSION }}
       - name: test
         run: make test
       - name: report-coverage
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@b9fd7d16f6d7d1b5d2bec1a2887e65ceed900238 # v4
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: /home/runner/work/cluster-permission/cluster-permission/go/src/github.com/open-cluster-management/cluster-permission/coverage.out
@@ -89,9 +90,9 @@ jobs:
       GO111MODULE: on
     steps:
       - name: Checkout Source
-        uses: actions/checkout@v3
+        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3
       - name: Run Gosec Security Scanner
-        uses: securego/gosec@master
+        uses: securego/gosec@caf8857bbd3276599d0176b0528e9712bb0b5bec # master
         with:
           args: -exclude-generated ./...
         env:
@@ -101,28 +102,22 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3
         with:
           fetch-depth: 1
           path: go/src/github.com/open-cluster-management/cluster-permission
       - name: install Go
-        uses: actions/setup-go@v3
+        uses: actions/setup-go@be3c94b385c4f180051c996d336f57a34c397495 # v3
         with:
           go-version: ${{ env.GO_VERSION }}
       - name: install imagebuilder
         run: go install github.com/openshift/imagebuilder/cmd/imagebuilder@v1.2.3
       - name: images
         run: make docker-build
-      - name: setup kind
-        uses: engineerd/setup-kind@v0.5.0
-        with:
-          version: v0.27.0
-          name: cluster1
-      - name: setup kind
-        uses: engineerd/setup-kind@v0.5.0
-        with:
-          version: v0.27.0
-          name: hub
+      - name: setup kind cluster1
+        run: kind create cluster --name cluster1 --image kindest/node:${{ env.KUBERNETES_VERSION }} --wait 300s
+      - name: setup kind hub
+        run: kind create cluster --name hub --image kindest/node:${{ env.KUBERNETES_VERSION }} --wait 300s
       - name: Load image on the nodes of the cluster
         run: |
           kind load docker-image --name=hub quay.io/open-cluster-management/cluster-permission:latest
