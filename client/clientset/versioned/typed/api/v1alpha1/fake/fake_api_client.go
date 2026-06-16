@@ -28,7 +28,7 @@ type FakeApiV1alpha1 struct {
 }
 
 func (c *FakeApiV1alpha1) ClusterPermissions(namespace string) v1alpha1.ClusterPermissionInterface {
-	return &FakeClusterPermissions{c, namespace}
+	return newFakeClusterPermissions(c, namespace)
 }
 
 // RESTClient returns a RESTClient that is used to communicate
