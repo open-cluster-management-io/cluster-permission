@@ -11,3 +11,10 @@ hubconfig:
   replicaCount: 1
   tolerations: []
 org: open-cluster-management
+
+# Opt-in NetworkPolicy for the hub cluster-permission controller.
+# Default false so community installs are unchanged. Policies use port-based
+# peers for portability across Kubernetes vendors. Metrics ingress (:8286) is
+# opened when enabled.
+networkPolicies:
+  enabled: false
